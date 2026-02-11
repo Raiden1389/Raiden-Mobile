@@ -150,17 +150,26 @@ export class SyncService {
       .and(c => c.isDirty === true)
       .toArray();
 
-    const res = await fetch(`${this.config.serverUrl}/update`, {
+    const res = await fetch(`${this.config.serverUrl}/corrections`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.config.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        workspaceId,
-        corrections,
-        chapters: dirtyChapters,
-      }),
+      body: JSON.stringify(
+        corrections.map(c => ({
+          workspaceId: c.workspaceId,
+          oldText: c.oldText,
+          newText: c.newText,
+          scope: c.scope,
+          fromChapterOrder: c.fromChapterOrder,
+          appliedAt: c.appliedAt,
+          dirtyChapters: dirtyChapters.map(ch => ({
+            order: ch.order,
+            content_translated: ch.content_translated,
+          })),
+        }))
+      ),
     });
 
     if (!res.ok) throw new Error(`Push failed: ${res.status}`);

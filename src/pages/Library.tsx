@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import { syncService } from '../lib/sync';
 import { useReaderSettings } from '../contexts/ReaderContext';
 import { THEME_MAP } from '../contexts/ReaderTypes';
 import { SyncDialog } from '../components/SyncDialog';
@@ -9,8 +10,36 @@ export function LibraryPage() {
   const { settings } = useReaderSettings();
   const theme = THEME_MAP[settings.theme];
   const workspaces = useLiveQuery(() => db.workspaces.toArray());
+  const totalPending = useLiveQuery(() => db.corrections.where('syncedToPC').equals(0).count());
 
   const [isSyncOpen, setIsSyncOpen] = useState(false);
+  const [pushStatus, setPushStatus] = useState<string | null>(null);
+
+  const handlePushBack = async () => {
+    if (!workspaces?.length) return;
+
+    try {
+      setPushStatus('Đang kết nối...');
+      const connected = await syncService.checkConnection();
+      if (!connected) {
+        setPushStatus('❌ Không kết nối được. Mở Sync trên PC trước!');
+        setTimeout(() => setPushStatus(null), 3000);
+        return;
+      }
+
+      let totalPushed = 0;
+      for (const ws of workspaces) {
+        const count = await syncService.pushCorrections(ws.id);
+        totalPushed += count;
+      }
+
+      setPushStatus(`✅ Đã đẩy ${totalPushed} sửa đổi về PC!`);
+      setTimeout(() => setPushStatus(null), 3000);
+    } catch (err) {
+      setPushStatus(`❌ ${err instanceof Error ? err.message : 'Lỗi'}`);
+      setTimeout(() => setPushStatus(null), 3000);
+    }
+  };
 
   return (
     <div
@@ -43,22 +72,72 @@ export function LibraryPage() {
         <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>
           🦅 Raiden Reader
         </h1>
-        <button
-          onClick={() => setIsSyncOpen(true)}
-          style={{
-            background: theme.accent,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '24px',
-            padding: '8px 20px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Sync
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {totalPending && totalPending > 0 ? (
+            <button
+              onClick={handlePushBack}
+              style={{
+                background: '#f59e0b',
+                color: '#000',
+                border: 'none',
+                borderRadius: '24px',
+                padding: '8px 16px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+            >
+              ↑ Đẩy về PC
+              <span style={{
+                position: 'absolute',
+                top: '-6px',
+                right: '-6px',
+                background: '#ef4444',
+                color: '#fff',
+                borderRadius: '50%',
+                width: '20px',
+                height: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                fontWeight: 800,
+              }}>
+                {totalPending}
+              </span>
+            </button>
+          ) : null}
+          <button
+            onClick={() => setIsSyncOpen(true)}
+            style={{
+              background: theme.accent,
+              color: '#fff',
+              border: 'none',
+              borderRadius: '24px',
+              padding: '8px 20px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Sync
+          </button>
+        </div>
       </header>
+
+      {/* Push status toast */}
+      {pushStatus && (
+        <div style={{
+          padding: '10px 16px',
+          background: pushStatus.startsWith('✅') ? '#10b98133' : pushStatus.startsWith('❌') ? '#ef444433' : `${theme.accent}33`,
+          textAlign: 'center',
+          fontSize: '13px',
+          fontWeight: 600,
+        }}>
+          {pushStatus}
+        </div>
+      )}
 
       {/* Library Grid */}
       <main style={{ padding: '20px' }}>

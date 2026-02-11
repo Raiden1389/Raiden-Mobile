@@ -3,15 +3,14 @@ import { db } from '../lib/db';
 
 /**
  * useReadingPosition — Auto-save & restore reading position
- * Saves: chapterId, scrollPercent, active chapter every 3 seconds
+ * Uses dual approach: saves both scrollTop (fast restore) and chapter/paragraph (precise restore)
  */
 export function useReadingPosition(
   workspaceId: string | undefined,
   scrollContainerRef: React.RefObject<HTMLDivElement | null>,
   allChapterIds: number[]
 ) {
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const lastSavedRef = useRef<string>('');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Find which chapter is currently in view
   const getCurrentChapter = useCallback((): { chapterId: number; scrollPercent: number; paragraphIndex: number } | null => {
@@ -30,7 +29,6 @@ export function useReadingPosition(
       }
     });
 
-    // Calculate paragraph index near center
     const paragraphs = el.querySelectorAll(`[data-chapter-id="${activeChapter}"] p`);
     let paragraphIndex = 0;
     paragraphs.forEach((p, idx) => {
@@ -45,58 +43,64 @@ export function useReadingPosition(
     return { chapterId: activeChapter, scrollPercent, paragraphIndex };
   }, [scrollContainerRef, allChapterIds]);
 
-  // Save position (debounced)
+  // Save position with short debounce (500ms)
   const savePosition = useCallback(() => {
     if (!workspaceId) return;
-
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
+
+    saveTimerRef.current = setTimeout(() => {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+
       const pos = getCurrentChapter();
       if (!pos) return;
 
-      const key = `${pos.chapterId}-${pos.scrollPercent}-${pos.paragraphIndex}`;
-      if (key === lastSavedRef.current) return; // Skip if unchanged
-      lastSavedRef.current = key;
-
-      await db.readingProgress.put({
+      // Save to IndexedDB
+      db.readingProgress.put({
         workspaceId,
         chapterId: pos.chapterId,
         scrollPercent: pos.scrollPercent,
         paragraphIndex: pos.paragraphIndex,
         updatedAt: new Date(),
       });
-    }, 3000);
-  }, [workspaceId, getCurrentChapter]);
+
+      // Also save raw scrollTop to localStorage for fast restore
+      localStorage.setItem(`raiden-scroll-${workspaceId}`, String(el.scrollTop));
+    }, 500); // 500ms debounce — short enough to catch before navigation
+  }, [workspaceId, getCurrentChapter, scrollContainerRef]);
 
   // Restore position on mount
   const restorePosition = useCallback(async () => {
     if (!workspaceId) return;
-
-    const progress = await db.readingProgress.get(workspaceId);
-    if (!progress) return;
-
-    // Wait for DOM to settle
-    await new Promise(r => setTimeout(r, 300));
-
     const el = scrollContainerRef.current;
     if (!el) return;
 
-    // Try to find the chapter element
+    // Strategy 1: Try localStorage scrollTop (instant, most reliable)
+    const savedScrollTop = localStorage.getItem(`raiden-scroll-${workspaceId}`);
+    if (savedScrollTop) {
+      el.scrollTop = Number(savedScrollTop);
+      return;
+    }
+
+    // Strategy 2: Try IndexedDB chapter/paragraph (more precise)
+    const progress = await db.readingProgress.get(workspaceId);
+    if (!progress) return;
+
+    await new Promise(r => setTimeout(r, 300));
+
     const chapterEl = el.querySelector(`[data-chapter-id="${progress.chapterId}"]`);
     if (chapterEl) {
-      // Try to find the paragraph
       const paragraphs = chapterEl.querySelectorAll('p');
       if (paragraphs[progress.paragraphIndex]) {
         const p = paragraphs[progress.paragraphIndex] as HTMLElement;
         el.scrollTo({ top: p.offsetTop - 80, behavior: 'auto' });
         return;
       }
-      // Fallback: scroll to chapter
       (chapterEl as HTMLElement).scrollIntoView({ behavior: 'auto' });
     }
   }, [workspaceId, scrollContainerRef]);
 
-  // Attach scroll listener for auto-save
+  // Attach scroll listener
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -105,8 +109,12 @@ export function useReadingPosition(
     return () => {
       el.removeEventListener('scroll', savePosition);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // Last-chance save to localStorage (sync, always works)
+      if (workspaceId && el) {
+        localStorage.setItem(`raiden-scroll-${workspaceId}`, String(el.scrollTop));
+      }
     };
-  }, [scrollContainerRef, savePosition]);
+  }, [scrollContainerRef, savePosition, workspaceId]);
 
   return { savePosition, restorePosition, getCurrentChapter };
 }

@@ -17,7 +17,9 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   dimmerOpacity: 0,
 };
 
-export const THEME_MAP: Record<ThemeMode, { bg: string; text: string; accent: string; border: string }> = {
+export type ThemeColors = { bg: string; text: string; accent: string; border: string };
+
+export const THEME_MAP: Record<ThemeMode, ThemeColors> = {
   dark: {
     bg: '#000000',
     text: '#D1D1D1',
