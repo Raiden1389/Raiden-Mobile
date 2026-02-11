@@ -35,19 +35,71 @@ export class SyncService {
   }
 
   /**
-   * Check if Desktop server is reachable
+   * Check if Desktop server is reachable.
+   * If no config yet, auto-discover on same host.
    */
   async checkConnection(): Promise<boolean> {
-    if (!this.config) return false;
+    // Auto-discover if not configured
+    if (!this.config) {
+      const discovered = await this.autoDiscover();
+      if (!discovered) return false;
+    }
+
     try {
-      const res = await fetch(`${this.config.serverUrl}/status`, {
-        headers: { 'Authorization': `Bearer ${this.config.token}` },
+      const res = await fetch(`${this.config!.serverUrl}/status`, {
+        headers: { 'Authorization': `Bearer ${this.config!.token}` },
         signal: AbortSignal.timeout(3000),
       });
       return res.ok;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Auto-discover Desktop sync server on LAN
+   */
+  private async autoDiscover(): Promise<boolean> {
+    const port = 8888;
+    const ipsToTry: string[] = [];
+
+    // 1. Same host as PWA
+    if (typeof window !== 'undefined') {
+      ipsToTry.push(window.location.hostname);
+    }
+
+    // 2. Saved connection from last sync
+    try {
+      const saved = await db.syncMeta.get('lastSyncConnection');
+      if (saved?.value) {
+        const parsed = JSON.parse(saved.value);
+        if (parsed.ip && !ipsToTry.includes(parsed.ip)) {
+          ipsToTry.push(parsed.ip);
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 3. localhost fallback
+    if (!ipsToTry.includes('localhost')) ipsToTry.push('localhost');
+
+    for (const ip of ipsToTry) {
+      try {
+        const res = await fetch(`http://${ip}:${port}/status`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.app === 'raiden') {
+            this.config = {
+              serverUrl: `http://${ip}:${port}`,
+              token: 'lan',
+            };
+            return true;
+          }
+        }
+      } catch { /* next */ }
+    }
+    return false;
   }
 
   /**

@@ -7,4 +7,8 @@ export default defineConfig({
   server: {
     host: true, // Bind to 0.0.0.0 — accessible from LAN (Android)
   },
+  build: {
+    outDir: '../Exe/mobile-dist',
+    emptyOutDir: true,
+  },
 })

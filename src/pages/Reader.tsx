@@ -11,12 +11,13 @@ import { useReadingPosition } from '../hooks/useReadingPosition';
 import { useSwipeBack } from '../hooks/useSwipeBack';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useNavbar } from '../hooks/useNavbar';
-import { useTextSelection } from '../hooks/useTextSelection';
+import { useDimmer } from '../hooks/useDimmer';
+import { useTocDrawer } from '../hooks/useTocDrawer';
 
 // Components
 import { SettingsPanel } from '../components/SettingsPanel';
-import { SelectionBubble } from '../components/SelectionBubble';
 import { EditDialog } from '../components/EditDialog';
+import { TocDrawer } from '../components/TocDrawer';
 import {
   ProgressBar,
   ReaderNavbar,
@@ -26,7 +27,8 @@ import {
 } from '../components/ReaderParts';
 
 // ===================================================
-// READER PAGE — Orchestrator (hooks + components)
+// READER PAGE — Orchestrator
+// Flow: select text natively → tap ✏️ FAB → dialog pre-filled → save
 // ===================================================
 
 export function ReaderPage() {
@@ -51,9 +53,12 @@ export function ReaderPage() {
   const { restorePosition, getCurrentChapter } = useReadingPosition(workspaceId, scrollContainerRef, chapterIds);
   const { swipeProgress } = useSwipeBack();
   const { navbarVisible, handleTap, trackScroll } = useNavbar(scrollContainerRef);
-  const { selection, clearSelection } = useTextSelection();
+  useDimmer(scrollContainerRef);
+  const { tocOpen, openToc, closeToc } = useTocDrawer();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingText, setEditingText] = useState<string | null>(null);
+
+
 
   const {
     visibleChapters,
@@ -62,6 +67,7 @@ export function ReaderPage() {
     currentChapterTitle,
     bottomSentinelRef,
     handleScroll: infiniteHandleScroll,
+    jumpToChapter,
   } = useInfiniteScroll(allChapters, scrollContainerRef, getCurrentChapter);
 
   // ── Combined scroll handler ──
@@ -70,7 +76,7 @@ export function ReaderPage() {
     trackScroll();
   };
 
-  // ── Restore reading position (instant, before paint) ──
+  // ── Restore reading position ──
   useLayoutEffect(() => {
     if (allChapters && allChapters.length > 0 && !restoredRef.current) {
       restoredRef.current = true;
@@ -85,28 +91,36 @@ export function ReaderPage() {
     }
   }, [currentChapterTitle]);
 
-  // ── Edit handlers ──
-  const handleEditStart = useCallback(() => {
-    if (selection) {
-      setEditingText(selection.text);
-      clearSelection();
-    }
-  }, [selection, clearSelection]);
+  // ── FAB: Read selection when user taps edit button ──
+  const handleEditFab = useCallback(() => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
 
-  const handleEditSave = useCallback(async (newText: string, scope: 'chapter' | 'all') => {
-    if (!editingText || !workspaceId) return;
+    if (text && text.length > 0) {
+      // User has text selected → use it
+      setEditingText(text);
+      sel?.removeAllRanges();
+    } else {
+      // No selection → open empty find & replace
+      setEditingText('');
+    }
+  }, []);
+
+  // ── Edit save ──
+  const handleEditSave = useCallback(async (oldText: string, newText: string, scope: 'chapter' | 'all') => {
+    if (!workspaceId) return;
 
     const pos = getCurrentChapter();
     const currentOrder = allChapters?.find(c => c.id === pos?.chapterId)?.order ?? 0;
 
-    const count = await applyCorrection(workspaceId, editingText, newText, scope, currentOrder);
+    const count = await applyCorrection(workspaceId, oldText, newText, scope, currentOrder);
     setEditingText(null);
 
     if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
-    console.log(`[Edit] Applied to ${count} chapter(s)`);
-  }, [editingText, workspaceId, getCurrentChapter, allChapters]);
+    console.log(`[Edit] "${oldText}" → "${newText}" in ${count} chapter(s)`);
+  }, [workspaceId, getCurrentChapter, allChapters]);
 
-  // ── Loading state ──
+  // ── Loading ──
   if (!allChapters) {
     return (
       <div style={{
@@ -122,7 +136,6 @@ export function ReaderPage() {
     );
   }
 
-  // ── Render ──
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -142,6 +155,7 @@ export function ReaderPage() {
         themeMode={settings.theme}
         onSettings={() => setSettingsOpen(true)}
         onCycleTheme={cycleTheme}
+        onToc={openToc}
       />
 
       {/* Scroll Container */}
@@ -168,25 +182,38 @@ export function ReaderPage() {
 
         <div ref={bottomSentinelRef} style={{ height: '1px' }} />
         {isComplete && <EndMarker />}
-
-        {/* Selection Bubble (inside scroll container for correct positioning) */}
-        {selection && (
-          <SelectionBubble
-            text={selection.text}
-            rect={selection.rect}
-            theme={theme}
-            scrollContainerRef={scrollContainerRef}
-            onEdit={handleEditStart}
-            onCopy={clearSelection}
-            onDismiss={clearSelection}
-          />
-        )}
       </div>
 
+      {/* ✏️ Edit FAB — auto-hide on scroll, synced with navbar */}
+      <button
+        onClick={handleEditFab}
+        style={{
+          position: 'fixed',
+          bottom: 'max(24px, env(safe-area-inset-bottom))',
+          right: '16px',
+          width: '44px', height: '44px',
+          borderRadius: '50%',
+          border: 'none',
+          background: `${theme.accent}cc`,
+          color: '#fff',
+          fontSize: '18px',
+          boxShadow: `0 2px 12px ${theme.accent}40`,
+          cursor: 'pointer',
+          zIndex: 90,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'transform 0.25s ease, opacity 0.25s ease',
+          transform: navbarVisible ? 'scale(1)' : 'scale(0)',
+          opacity: navbarVisible ? 0.85 : 0,
+          pointerEvents: navbarVisible ? 'auto' : 'none',
+        }}
+      >
+        ✏️
+      </button>
+
       {/* Edit Dialog */}
-      {editingText && (
+      {editingText !== null && (
         <EditDialog
-          oldText={editingText}
+          paragraphText={editingText}
           theme={theme}
           onSave={handleEditSave}
           onCancel={() => setEditingText(null)}
@@ -194,9 +221,17 @@ export function ReaderPage() {
       )}
 
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <TocDrawer
+        open={tocOpen}
+        onClose={closeToc}
+        chapters={allChapters ?? []}
+        currentChapterId={getCurrentChapter()?.chapterId ?? null}
+        theme={theme}
+        onSelect={jumpToChapter}
+      />
       <SwipeBackIndicator progress={swipeProgress} accent={theme.accent} />
 
-      {/* Dimmer overlay */}
+      {/* Dimmer */}
       {settings.dimmerOpacity > 0 && (
         <div style={{
           position: 'fixed', inset: 0, background: '#000',
@@ -207,7 +242,6 @@ export function ReaderPage() {
       <style>{`
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes bubbleIn { from { transform: translateX(-50%) scale(0.8); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
       `}</style>
     </div>
   );

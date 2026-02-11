@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ThemeColors } from '../contexts/ReaderTypes';
+import { DropCap } from './DropCap';
 
 // ===================================================
 // READER SUB-COMPONENTS
@@ -41,6 +42,7 @@ export const ChapterBlock = React.memo(function ChapterBlock({
 }) {
   const title = chapter.title_translated || chapter.title;
   const content = chapter.content_translated || chapter.content_original || '';
+  const paragraphs = content.split('\n').filter(p => p.trim());
 
   return (
     <div data-chapter-id={chapter.id}>
@@ -57,15 +59,21 @@ export const ChapterBlock = React.memo(function ChapterBlock({
       </h2>
 
       <div style={{ marginBottom: '60px' }}>
-        {content
-          .split('\n')
-          .filter(p => p.trim())
-          .map((paragraph, pIdx) => (
-            <p key={pIdx} style={{ marginBottom: '1em', textIndent: '2em', textAlign: 'justify' }}>
-              {paragraph}
+        {paragraphs.map((paragraph, pIdx) => {
+          const firstChar = pIdx === 0 ? paragraph.match(/\p{L}/u)?.[0] : null;
+          const restText = pIdx === 0 && firstChar
+            ? paragraph.slice(paragraph.indexOf(firstChar) + firstChar.length)
+            : paragraph;
+
+          return (
+            <p key={pIdx} style={{ marginBottom: '1em', textIndent: pIdx === 0 ? 0 : '2em', textAlign: 'justify' }}>
+              {pIdx === 0 && firstChar && (
+                <DropCap char={firstChar} color={theme.accent} fontFamily="serif" />
+              )}
+              {restText}
             </p>
-          ))
-        }
+          );
+        })}
       </div>
     </div>
   );
@@ -124,6 +132,7 @@ export function ReaderNavbar({
   themeMode,
   onSettings,
   onCycleTheme,
+  onToc,
 }: {
   visible: boolean;
   chapterTitle: string;
@@ -132,6 +141,7 @@ export function ReaderNavbar({
   themeMode: string;
   onSettings: () => void;
   onCycleTheme: () => void;
+  onToc?: () => void;
 }) {
   return (
     <header style={{
@@ -152,12 +162,24 @@ export function ReaderNavbar({
       transform: visible ? 'translateY(0)' : 'translateY(-100%)',
       opacity: visible ? 1 : 0,
     }}>
-      <a href="/" style={{
-        color: theme.text, textDecoration: 'none',
-        fontSize: '13px', fontWeight: 700, opacity: 0.7, minWidth: '60px',
-      }}>
-        ← Thư viện
-      </a>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: '70px' }}>
+        <a href="/" style={{
+          color: theme.text, textDecoration: 'none',
+          fontSize: '13px', fontWeight: 700, opacity: 0.7,
+        }}>
+          ←
+        </a>
+        {onToc && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToc(); }}
+            style={{
+              background: 'none', border: `1px solid ${theme.border}`,
+              color: theme.text, borderRadius: '8px', padding: '4px 10px',
+              fontSize: '13px', cursor: 'pointer',
+            }}
+          >📑</button>
+        )}
+      </div>
       <span style={{
         fontSize: '11px', fontWeight: 700, opacity: 0.5,
         flex: 1, textAlign: 'center',
@@ -166,21 +188,36 @@ export function ReaderNavbar({
       }}>
         {chapterTitle || `${scrollPercent}%`}
       </span>
-      <div style={{ display: 'flex', gap: '8px', minWidth: '60px', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: '6px', minWidth: '80px', justifyContent: 'flex-end' }}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              document.documentElement.requestFullscreen?.();
+            }
+          }}
+          style={{
+            background: 'none', border: `1px solid ${theme.border}`,
+            color: theme.text, borderRadius: '8px', padding: '4px 8px',
+            fontSize: '12px', cursor: 'pointer',
+          }}
+        >{document.fullscreenElement ? '⬜' : '📱'}</button>
         <button
           onClick={(e) => { e.stopPropagation(); onSettings(); }}
           style={{
             background: 'none', border: `1px solid ${theme.border}`,
-            color: theme.text, borderRadius: '8px', padding: '4px 10px',
-            fontSize: '13px', cursor: 'pointer',
+            color: theme.text, borderRadius: '8px', padding: '4px 8px',
+            fontSize: '12px', cursor: 'pointer',
           }}
         >⚙️</button>
         <button
           onClick={(e) => { e.stopPropagation(); onCycleTheme(); }}
           style={{
             background: 'none', border: `1px solid ${theme.border}`,
-            color: theme.text, borderRadius: '8px', padding: '4px 10px',
-            fontSize: '13px', cursor: 'pointer',
+            color: theme.text, borderRadius: '8px', padding: '4px 8px',
+            fontSize: '12px', cursor: 'pointer',
           }}
         >
           {themeMode === 'dark' ? '🌙' : themeMode === 'sepia' ? '📜' : '☀️'}

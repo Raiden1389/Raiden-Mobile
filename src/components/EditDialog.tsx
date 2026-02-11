@@ -2,29 +2,35 @@ import { useState, useRef, useEffect } from 'react';
 import type { ThemeColors } from '../contexts/ReaderTypes';
 
 interface Props {
-  oldText: string;
+  /** Pre-selected text (empty string = manual find & replace mode) */
+  paragraphText: string;
   theme: ThemeColors;
-  onSave: (newText: string, scope: 'chapter' | 'all') => void;
+  onSave: (oldText: string, newText: string, scope: 'chapter' | 'all') => void;
   onCancel: () => void;
 }
 
 /**
- * EditDialog — Full-screen modal for text correction
- * Shows original text (readonly) and input for replacement
+ * EditDialog — Correction dialog
+ * 
+ * Mode 1: paragraphText filled → shows "máy tính xách tay" with strikethrough, user types "laptop"
+ * Mode 2: paragraphText empty → user types both find and replace (fallback)
  */
-export function EditDialog({ oldText, theme, onSave, onCancel }: Props) {
-  const [newText, setNewText] = useState(oldText);
+export function EditDialog({ paragraphText, theme, onSave, onCancel }: Props) {
+  const hasPreselection = paragraphText.length > 0;
+  const [findText, setFindText] = useState(paragraphText);
+  const [replaceText, setReplaceText] = useState('');
   const [scope, setScope] = useState<'chapter' | 'all'>('all');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-focus input
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setTimeout(() => inputRef.current?.focus(), 150);
   }, []);
 
   const handleSave = () => {
-    if (newText.trim() && newText !== oldText) {
-      onSave(newText.trim(), scope);
+    const find = findText.trim();
+    const replace = replaceText.trim();
+    if (find && replace && find !== replace) {
+      onSave(find, replace, scope);
     }
   };
 
@@ -34,115 +40,113 @@ export function EditDialog({ oldText, theme, onSave, onCancel }: Props) {
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       style={{
-        position: 'fixed',
-        inset: 0,
+        position: 'fixed', inset: 0,
         background: 'rgba(0,0,0,0.6)',
         backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
         zIndex: 500,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
+        display: 'flex', alignItems: 'flex-end',
         animation: 'fadeIn 0.15s ease',
       }}
     >
       <div style={{
         width: '100%',
-        maxWidth: '400px',
         background: isDark ? '#1a1a1a' : '#fff',
         color: theme.text,
-        borderRadius: '16px',
-        padding: '24px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        borderRadius: '20px 20px 0 0',
+        padding: '20px',
+        paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.3)',
+        animation: 'slideUp 0.25s ease',
       }}>
-        {/* Header */}
-        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>
-          ✏️ Sửa văn bản
+        {/* Drag handle */}
+        <div style={{
+          width: '40px', height: '4px', borderRadius: '2px',
+          background: theme.border, margin: '0 auto 16px',
+        }} />
+
+        {/* Title */}
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '14px' }}>
+          ✏️ {hasPreselection ? 'Sửa lỗi dịch' : 'Tìm & Sửa'}
         </h3>
 
-        {/* Original text */}
-        <label style={{ fontSize: '11px', fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '1px' }}>
-          Văn bản gốc
-        </label>
+        {/* Find text — pre-filled or editable */}
         <div style={{
-          padding: '10px 12px',
-          borderRadius: '8px',
-          background: isDark ? '#0a0a0a' : '#f5f5f5',
-          fontSize: '14px',
-          lineHeight: 1.6,
-          marginTop: '6px',
-          marginBottom: '16px',
-          maxHeight: '80px',
-          overflow: 'auto',
-          wordBreak: 'break-word',
+          padding: '12px 14px', borderRadius: '12px',
+          background: '#ef444420', border: '1px solid #ef444440',
+          marginBottom: '12px',
         }}>
-          {oldText}
+          <div style={{ fontSize: '10px', fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
+            {hasPreselection ? 'Sẽ thay thế' : 'Tìm từ sai'}
+          </div>
+          {hasPreselection ? (
+            <div style={{ fontSize: '15px', fontWeight: 700, lineHeight: 1.4, wordBreak: 'break-word' }}>
+              <s style={{ opacity: 0.6 }}>{paragraphText}</s>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={findText}
+              onChange={e => setFindText(e.target.value)}
+              placeholder="Gõ từ/cụm từ cần sửa..."
+              style={{
+                width: '100%', padding: '0',
+                border: 'none', background: 'transparent',
+                color: theme.text, fontSize: '15px', fontWeight: 700,
+                outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+          )}
         </div>
 
-        {/* New text input */}
-        <label style={{ fontSize: '11px', fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '1px' }}>
-          Sửa thành
-        </label>
-        <textarea
-          ref={inputRef}
-          value={newText}
-          onChange={e => setNewText(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            border: `2px solid ${theme.accent}`,
-            background: isDark ? '#0a0a0a' : '#fff',
-            color: theme.text,
-            fontSize: '14px',
-            lineHeight: 1.6,
-            marginTop: '6px',
-            marginBottom: '16px',
-            minHeight: '60px',
-            resize: 'vertical',
-            outline: 'none',
-            fontFamily: 'inherit',
-            boxSizing: 'border-box',
-          }}
-        />
+        {/* Replace input */}
+        <div style={{
+          padding: '12px 14px', borderRadius: '12px',
+          background: '#10b98120', border: `2px solid ${theme.accent}`,
+          marginBottom: '16px',
+        }}>
+          <div style={{ fontSize: '10px', fontWeight: 700, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
+            Thay bằng
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={replaceText}
+            onChange={e => setReplaceText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+            placeholder="Gõ từ/cụm từ đúng..."
+            style={{
+              width: '100%', padding: '0',
+              border: 'none', background: 'transparent',
+              color: theme.text, fontSize: '15px', fontWeight: 700,
+              outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+        </div>
 
-        {/* Scope radio */}
-        <div style={{ marginBottom: '20px' }}>
+        {/* Scope */}
+        <div style={{ marginBottom: '16px' }}>
           {(['chapter', 'all'] as const).map(s => (
             <label
               key={s}
               onClick={() => setScope(s)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 0',
-                cursor: 'pointer',
-                fontSize: '13px',
+                display: 'flex', alignItems: 'center',
+                gap: '8px', padding: '6px 0',
+                cursor: 'pointer', fontSize: '13px',
                 fontWeight: scope === s ? 700 : 400,
-                opacity: scope === s ? 1 : 0.6,
+                opacity: scope === s ? 1 : 0.5,
               }}
             >
               <span style={{
-                width: '18px',
-                height: '18px',
-                borderRadius: '50%',
+                width: '18px', height: '18px', borderRadius: '50%',
                 border: `2px solid ${scope === s ? theme.accent : theme.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 {scope === s && (
-                  <span style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    background: theme.accent,
-                  }} />
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: theme.accent }} />
                 )}
               </span>
-              {s === 'chapter' ? 'Chỉ chương này' : 'Tất cả chương từ đây trở đi'}
+              {s === 'chapter' ? 'Chỉ chương này' : 'Tất cả từ đây trở đi'}
             </label>
           ))}
         </div>
@@ -152,33 +156,24 @@ export function EditDialog({ oldText, theme, onSave, onCancel }: Props) {
           <button
             onClick={onCancel}
             style={{
-              flex: 1,
-              padding: '12px',
-              borderRadius: '10px',
+              flex: 1, padding: '13px', borderRadius: '12px',
               border: `1px solid ${theme.border}`,
-              background: 'transparent',
-              color: theme.text,
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: 'pointer',
+              background: 'transparent', color: theme.text,
+              fontSize: '14px', fontWeight: 700, cursor: 'pointer',
             }}
           >
             Hủy
           </button>
           <button
             onClick={handleSave}
-            disabled={!newText.trim() || newText === oldText}
+            disabled={!findText.trim() || !replaceText.trim() || findText.trim() === replaceText.trim()}
             style={{
-              flex: 1,
-              padding: '12px',
-              borderRadius: '10px',
+              flex: 1, padding: '13px', borderRadius: '12px',
               border: 'none',
-              background: newText !== oldText ? theme.accent : theme.border,
-              color: '#fff',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: newText !== oldText ? 'pointer' : 'default',
-              opacity: newText !== oldText ? 1 : 0.5,
+              background: (findText.trim() && replaceText.trim()) ? theme.accent : theme.border,
+              color: '#fff', fontSize: '14px', fontWeight: 700,
+              cursor: (findText.trim() && replaceText.trim()) ? 'pointer' : 'default',
+              opacity: (findText.trim() && replaceText.trim()) ? 1 : 0.5,
             }}
           >
             Lưu

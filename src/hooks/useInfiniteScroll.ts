@@ -14,6 +14,7 @@ export function useInfiniteScroll(
   const [scrollPercent, setScrollPercent] = useState(0);
   const [currentChapterTitle, setCurrentChapterTitle] = useState('');
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
+  const pendingJumpRef = useRef<number | null>(null);
 
   // Load next chapter when sentinel is visible
   useEffect(() => {
@@ -38,6 +39,21 @@ export function useInfiniteScroll(
     return () => observer.disconnect();
   }, [allChapters?.length, loadedRange.end]);
 
+  // After render, scroll to pending jump target
+  useEffect(() => {
+    if (pendingJumpRef.current === null) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const chapterId = pendingJumpRef.current;
+    requestAnimationFrame(() => {
+      const target = el.querySelector(`[data-chapter-id="${chapterId}"]`) as HTMLElement;
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        pendingJumpRef.current = null;
+      }
+    });
+  }, [loadedRange, scrollContainerRef]);
+
   // Track scroll progress + update current chapter title
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -55,6 +71,34 @@ export function useInfiniteScroll(
     }
   }, [getCurrentChapter, allChapters, scrollContainerRef]);
 
+  // Jump to a specific chapter — expand loaded range if needed
+  const jumpToChapter = useCallback((chapterId: number) => {
+    if (!allChapters?.length) return;
+    const idx = allChapters.findIndex(c => c.id === chapterId);
+    if (idx === -1) return;
+
+    // Expand range to include this chapter + a few extra
+    const neededEnd = Math.min(idx + 3, allChapters.length);
+    pendingJumpRef.current = chapterId;
+
+    setLoadedRange(prev => {
+      if (neededEnd <= prev.end) {
+        // Already loaded — scroll immediately
+        requestAnimationFrame(() => {
+          const el = scrollContainerRef.current;
+          if (!el) return;
+          const target = el.querySelector(`[data-chapter-id="${chapterId}"]`) as HTMLElement;
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            pendingJumpRef.current = null;
+          }
+        });
+        return prev;
+      }
+      return { ...prev, end: neededEnd };
+    });
+  }, [allChapters, scrollContainerRef]);
+
   const visibleChapters = allChapters?.slice(loadedRange.start, loadedRange.end) ?? [];
   const isComplete = allChapters ? loadedRange.end >= allChapters.length : false;
 
@@ -65,5 +109,6 @@ export function useInfiniteScroll(
     currentChapterTitle,
     bottomSentinelRef,
     handleScroll,
+    jumpToChapter,
   };
 }
