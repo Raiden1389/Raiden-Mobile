@@ -12,6 +12,21 @@
     <title>Raiden Reader</title>
   </head>
   <body>
+    <script>
+      // No-Flash Theme: set bg BEFORE React mount to avoid white flash
+      (function(){
+        try {
+          var s = JSON.parse(localStorage.getItem('raiden-reader-settings') || '{}');
+          var themes = { dark: '#000000', sepia: '#F4ECD8', light: '#FAFAFA' };
+          var bg = themes[s.theme] || '#000000';
+          document.body.style.backgroundColor = bg;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', bg);
+        } catch(e) {
+          document.body.style.backgroundColor = '#000000';
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

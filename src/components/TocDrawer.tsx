@@ -12,6 +12,7 @@ interface TocDrawerProps {
   onClose: () => void;
   chapters: TocChapter[];
   currentChapterId: number | null;
+  readChapterIds?: Set<number>;
   theme: ThemeColors;
   onSelect: (chapterId: number) => void;
 }
@@ -20,7 +21,7 @@ interface TocDrawerProps {
  * TocDrawer — Slide-in table of contents from left
  * Shows chapter list with read/reading/unread status
  */
-export function TocDrawer({ open, onClose, chapters, currentChapterId, theme, onSelect }: TocDrawerProps) {
+export function TocDrawer({ open, onClose, chapters, currentChapterId, readChapterIds, theme, onSelect }: TocDrawerProps) {
   if (!open) return null;
 
   return (
@@ -82,7 +83,7 @@ export function TocDrawer({ open, onClose, chapters, currentChapterId, theme, on
           {chapters.map((ch, idx) => {
             const title = ch.title_translated || ch.title;
             const isCurrent = ch.id === currentChapterId;
-            const isRead = currentChapterId ? ch.id < currentChapterId : false;
+            const isRead = readChapterIds ? readChapterIds.has(ch.id) : (currentChapterId ? ch.id < currentChapterId : false);
 
             return (
               <button

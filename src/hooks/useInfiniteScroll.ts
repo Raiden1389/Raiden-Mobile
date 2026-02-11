@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chapter } from '../lib/db';
+import { db } from '../lib/db';
 
 /**
  * useInfiniteScroll — Manages chapter loading via IntersectionObserver
@@ -8,13 +9,34 @@ import type { Chapter } from '../lib/db';
 export function useInfiniteScroll(
   allChapters: Chapter[] | undefined,
   scrollContainerRef: React.RefObject<HTMLDivElement | null>,
-  getCurrentChapter: () => { chapterId: number; scrollPercent: number; paragraphIndex: number } | null
+  getCurrentChapter: () => { chapterId: number; ratio: number } | null
 ) {
   const [loadedRange, setLoadedRange] = useState({ start: 0, end: 5 });
   const [scrollPercent, setScrollPercent] = useState(0);
   const [currentChapterTitle, setCurrentChapterTitle] = useState('');
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const pendingJumpRef = useRef<number | null>(null);
+  const pendingRatioRef = useRef<number | null>(null);
+  const initialRestoreDone = useRef(false);
+
+  // On mount: pre-expand loadedRange to include saved reading position
+  useEffect(() => {
+    if (!allChapters?.length || initialRestoreDone.current) return;
+    initialRestoreDone.current = true;
+
+    // Get workspaceId from first chapter
+    const wsId = allChapters[0]?.workspaceId;
+    if (!wsId) return;
+
+    db.readingProgress.get(wsId).then(progress => {
+      if (!progress) return;
+      const idx = allChapters.findIndex(c => c.id === progress.chapterId);
+      if (idx === -1 || idx < 5) return; // Already within initial range
+
+      // Expand to include saved chapter + a few extra
+      setLoadedRange({ start: 0, end: Math.min(idx + 3, allChapters.length) });
+    });
+  }, [allChapters]);
 
   // Load next chapter when sentinel is visible
   useEffect(() => {
@@ -39,19 +61,34 @@ export function useInfiniteScroll(
     return () => observer.disconnect();
   }, [allChapters?.length, loadedRange.end]);
 
-  // After render, scroll to pending jump target
+  // After render, scroll to pending jump target (with retry for large expansions)
   useEffect(() => {
     if (pendingJumpRef.current === null) return;
     const el = scrollContainerRef.current;
     if (!el) return;
     const chapterId = pendingJumpRef.current;
-    requestAnimationFrame(() => {
+
+    const tryScroll = (attempts = 0) => {
       const target = el.querySelector(`[data-chapter-id="${chapterId}"]`) as HTMLElement;
       if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // If ratio is stored, scroll with pixel-perfect offset
+        if (pendingRatioRef.current !== null) {
+          const top = target.offsetTop + target.offsetHeight * pendingRatioRef.current;
+          el.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+        } else {
+          target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }
         pendingJumpRef.current = null;
+        pendingRatioRef.current = null;
+        return;
       }
-    });
+      // Retry — chapters may still be rendering
+      if (attempts < 15) {
+        requestAnimationFrame(() => tryScroll(attempts + 1));
+      }
+    };
+
+    requestAnimationFrame(() => tryScroll());
   }, [loadedRange, scrollContainerRef]);
 
   // Track scroll progress + update current chapter title
@@ -72,7 +109,7 @@ export function useInfiniteScroll(
   }, [getCurrentChapter, allChapters, scrollContainerRef]);
 
   // Jump to a specific chapter — expand loaded range if needed
-  const jumpToChapter = useCallback((chapterId: number) => {
+  const jumpToChapter = useCallback((chapterId: number, ratio?: number) => {
     if (!allChapters?.length) return;
     const idx = allChapters.findIndex(c => c.id === chapterId);
     if (idx === -1) return;
@@ -80,6 +117,7 @@ export function useInfiniteScroll(
     // Expand range to include this chapter + a few extra
     const neededEnd = Math.min(idx + 3, allChapters.length);
     pendingJumpRef.current = chapterId;
+    pendingRatioRef.current = ratio ?? null;
 
     setLoadedRange(prev => {
       if (neededEnd <= prev.end) {
@@ -89,8 +127,14 @@ export function useInfiniteScroll(
           if (!el) return;
           const target = el.querySelector(`[data-chapter-id="${chapterId}"]`) as HTMLElement;
           if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (ratio !== undefined) {
+              const top = target.offsetTop + target.offsetHeight * ratio;
+              el.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+            } else {
+              target.scrollIntoView({ behavior: 'auto', block: 'start' });
+            }
             pendingJumpRef.current = null;
+            pendingRatioRef.current = null;
           }
         });
         return prev;

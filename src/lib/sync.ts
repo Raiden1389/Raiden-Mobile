@@ -146,6 +146,10 @@ export class SyncService {
     const CHUNK_SIZE = 50;
     let offset = 0;
 
+    // Track previous chapter count for "new chapters" badge
+    const prevCount = await db.chapters.where('workspaceId').equals(workspaceId).count();
+    await db.syncMeta.put({ key: `prevChapterCount_${workspaceId}`, value: String(prevCount) });
+
     // Clear existing chapters for this workspace before re-downloading
     await db.chapters.where('workspaceId').equals(workspaceId).delete();
 

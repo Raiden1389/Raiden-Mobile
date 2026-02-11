@@ -31,52 +31,83 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
     setStatus('scanning');
     setError('');
 
-    // Strategy 1: Same host as PWA (most likely)
-    const pcIp = window.location.hostname;
-    const port = 8888;
+    const hostname = window.location.hostname;
+    const isHTTPS = window.location.protocol === 'https:';
+    const isTunnel = hostname.includes('trycloudflare.com') || hostname.includes('ngrok') || isHTTPS;
 
-    // Also try saved connection IP if different
+    // Build list of base URLs to try
+    const urlsToTry: string[] = [];
+
+    if (isTunnel) {
+      // When served via Cloudflare Tunnel, the tunnel proxies directly to port 8888
+      // So we use the current origin (https://xxx.trycloudflare.com) as the server URL
+      urlsToTry.push(window.location.origin);
+    } else {
+      // LAN mode: try hostname:8888
+      urlsToTry.push(`http://${hostname}:8888`);
+    }
+
+    // Also try saved connection
     const savedIp = savedConnection?.value ? JSON.parse(savedConnection.value).ip : null;
-    const ipsToTry = [pcIp, savedIp].filter(Boolean) as string[];
-    // Remove duplicates
-    const uniqueIps = [...new Set(ipsToTry)];
+    if (savedIp) {
+      const savedUrl = `http://${savedIp}:8888`;
+      if (!urlsToTry.includes(savedUrl)) urlsToTry.push(savedUrl);
+    }
 
-    for (const ip of uniqueIps) {
+    console.log('[SyncDialog] Trying URLs:', urlsToTry);
+
+    for (const baseUrl of urlsToTry) {
       try {
-        const res = await fetch(`http://${ip}:${port}/status`, {
-          signal: AbortSignal.timeout(2000),
+        console.log(`[SyncDialog] Checking ${baseUrl}/status ...`);
+        const res = await fetch(`${baseUrl}/status`, {
+          signal: AbortSignal.timeout(3000),
         });
         if (res.ok) {
           const data = await res.json();
           if (data.app === 'raiden') {
+            console.log(`[SyncDialog] Found Desktop at ${baseUrl}`);
             // Found server! Get workspace info from manifest
-            const manifestRes = await fetch(`http://${ip}:${port}/manifest`, {
+            const manifestRes = await fetch(`${baseUrl}/manifest`, {
               signal: AbortSignal.timeout(3000),
             });
             if (manifestRes.ok) {
               // Get workspace info
-              const wsRes = await fetch(`http://${ip}:${port}/workspace`, {
+              const wsRes = await fetch(`${baseUrl}/workspace`, {
                 signal: AbortSignal.timeout(3000),
               });
               const wsData = wsRes.ok ? await wsRes.json() : null;
 
-              setServerInfo({ ip, port, workspaceId: wsData?.id });
+              const displayIp = isTunnel ? hostname : hostname;
+              const displayPort = isTunnel ? 443 : 8888;
+              setServerInfo({ ip: displayIp, port: displayPort, workspaceId: wsData?.id });
 
-              // Connect syncService (no token needed for LAN)
-              syncService.parseQR(`raiden://sync?ip=${ip}&port=${port}&token=lan&workspaceId=${wsData?.id || ''}`);
+              // Connect syncService with the correct base URL
+              // Override parseQR to use the tunnel URL directly
+              syncService.parseQR(`raiden://sync?ip=${hostname}&port=${isTunnel ? '443' : '8888'}&token=lan&workspaceId=${wsData?.id || ''}`);
+
+              // IMPORTANT: Override serverUrl to use tunnel URL directly
+              // parseQR builds http://hostname:port but for tunnel we need https://hostname
+              if (isTunnel) {
+                (syncService as any).config = {
+                  serverUrl: baseUrl,
+                  token: 'lan',
+                };
+              }
+
               setStatus('found');
 
               // Save this connection for future
               await db.syncMeta.put({
                 key: 'lastSyncConnection',
-                value: JSON.stringify({ ip, port }),
+                value: JSON.stringify({ ip: hostname, port: isTunnel ? 443 : 8888 }),
               });
               return;
             }
           }
         }
-      } catch {
-        // Try next IP
+      } catch (err) {
+        console.log(`[SyncDialog] Failed: ${baseUrl}`, err);
+        // Try next URL
       }
     }
 

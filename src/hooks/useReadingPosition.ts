@@ -1,106 +1,113 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { db } from '../lib/db';
+
+const SAVE_KEY = (wsId: string) => `raiden-lastChapter-${wsId}`;
+
+interface SavedPosition {
+  chapterId: number;
+  ratio: number; // 0→1, relative position within chapter
+}
 
 /**
- * useReadingPosition — Auto-save & restore reading position
- * Uses dual approach: saves both scrollTop (fast restore) and chapter/paragraph (precise restore)
+ * useReadingPosition — Pixel-perfect chapter tracking with ratio
+ * Saves { chapterId, ratio } to localStorage on scroll (throttled 300ms).
+ * ratio = how far down the chapter viewport-top is (0 = top, 1 = bottom).
+ * Survives font size changes because ratio * newHeight ≈ same position.
  */
 export function useReadingPosition(
   workspaceId: string | undefined,
   scrollContainerRef: React.RefObject<HTMLDivElement | null>,
   allChapterIds: number[]
 ) {
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const lastSavedRef = useRef<string | null>(null);
+  const throttleRef = useRef(false);
 
-  // Find which chapter is currently in view
-  const getCurrentChapter = useCallback((): { chapterId: number; scrollPercent: number; paragraphIndex: number } | null => {
+  // Find which chapter is currently in view + compute ratio
+  const getCurrentChapter = useCallback((): { chapterId: number; ratio: number } | null => {
     const el = scrollContainerRef.current;
     if (!el || allChapterIds.length === 0) return null;
 
     const chapterEls = el.querySelectorAll('[data-chapter-id]');
-    let activeChapter = allChapterIds[0];
+    let activeEl: HTMLElement | null = null;
+    let activeId = allChapterIds[0];
     const viewportCenter = el.scrollTop + el.clientHeight / 2;
 
     chapterEls.forEach((chEl) => {
+      const htmlEl = chEl as HTMLElement;
       const id = Number(chEl.getAttribute('data-chapter-id'));
-      const top = (chEl as HTMLElement).offsetTop;
-      if (top <= viewportCenter) {
-        activeChapter = id;
+      if (htmlEl.offsetTop <= viewportCenter) {
+        activeId = id;
+        activeEl = htmlEl;
       }
     });
 
-    const paragraphs = el.querySelectorAll(`[data-chapter-id="${activeChapter}"] p`);
-    let paragraphIndex = 0;
-    paragraphs.forEach((p, idx) => {
-      if ((p as HTMLElement).offsetTop <= viewportCenter) {
-        paragraphIndex = idx;
-      }
-    });
+    if (!activeEl) return { chapterId: activeId, ratio: 0 };
 
-    const totalScroll = el.scrollHeight - el.clientHeight;
-    const scrollPercent = totalScroll > 0 ? Math.round((el.scrollTop / totalScroll) * 100) : 0;
+    // ratio = how far viewport-top is within this chapter (0→1)
+    const offset = el.scrollTop - (activeEl as HTMLElement).offsetTop;
+    const height = (activeEl as HTMLElement).offsetHeight;
+    const ratio = height > 0 ? Math.min(Math.max(offset / height, 0), 1) : 0;
 
-    return { chapterId: activeChapter, scrollPercent, paragraphIndex };
+    return { chapterId: activeId, ratio };
   }, [scrollContainerRef, allChapterIds]);
 
-  // Save position with short debounce (500ms)
+  // Save on scroll — throttled 300ms
   const savePosition = useCallback(() => {
-    if (!workspaceId) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (!workspaceId || throttleRef.current) return;
+    throttleRef.current = true;
 
-    saveTimerRef.current = setTimeout(() => {
-      const el = scrollContainerRef.current;
-      if (!el) return;
-
+    setTimeout(() => {
+      throttleRef.current = false;
       const pos = getCurrentChapter();
       if (!pos) return;
 
-      // Save to IndexedDB
-      db.readingProgress.put({
-        workspaceId,
-        chapterId: pos.chapterId,
-        scrollPercent: pos.scrollPercent,
-        paragraphIndex: pos.paragraphIndex,
-        updatedAt: new Date(),
-      });
-
-      // Also save raw scrollTop to localStorage for fast restore
-      localStorage.setItem(`raiden-scroll-${workspaceId}`, String(el.scrollTop));
-    }, 500); // 500ms debounce — short enough to catch before navigation
-  }, [workspaceId, getCurrentChapter, scrollContainerRef]);
-
-  // Restore position on mount
-  const restorePosition = useCallback(async () => {
-    if (!workspaceId) return;
-    const el = scrollContainerRef.current;
-    if (!el) return;
-
-    // Strategy 1: Try localStorage scrollTop (instant, most reliable)
-    const savedScrollTop = localStorage.getItem(`raiden-scroll-${workspaceId}`);
-    if (savedScrollTop) {
-      el.scrollTop = Number(savedScrollTop);
-      return;
-    }
-
-    // Strategy 2: Try IndexedDB chapter/paragraph (more precise)
-    const progress = await db.readingProgress.get(workspaceId);
-    if (!progress) return;
-
-    await new Promise(r => setTimeout(r, 300));
-
-    const chapterEl = el.querySelector(`[data-chapter-id="${progress.chapterId}"]`);
-    if (chapterEl) {
-      const paragraphs = chapterEl.querySelectorAll('p');
-      if (paragraphs[progress.paragraphIndex]) {
-        const p = paragraphs[progress.paragraphIndex] as HTMLElement;
-        el.scrollTo({ top: p.offsetTop - 80, behavior: 'auto' });
-        return;
+      const key = JSON.stringify({ c: pos.chapterId, r: Math.round(pos.ratio * 1000) / 1000 });
+      if (key !== lastSavedRef.current) {
+        lastSavedRef.current = key;
+        localStorage.setItem(SAVE_KEY(workspaceId), JSON.stringify({
+          chapterId: pos.chapterId,
+          ratio: Math.round(pos.ratio * 1000) / 1000, // 3 decimal precision
+        }));
       }
-      (chapterEl as HTMLElement).scrollIntoView({ behavior: 'auto' });
-    }
-  }, [workspaceId, scrollContainerRef]);
+    }, 300);
+  }, [workspaceId, getCurrentChapter]);
 
-  // Attach scroll listener
+  // Get saved position — try localStorage, fallback IndexedDB migration
+  const getSavedPosition = useCallback(async (): Promise<SavedPosition | null> => {
+    if (!workspaceId) return null;
+
+    // New format: { chapterId, ratio }
+    const saved = localStorage.getItem(SAVE_KEY(workspaceId));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed.chapterId) {
+          return { chapterId: parsed.chapterId, ratio: parsed.ratio ?? 0 };
+        }
+        // Legacy: just a number
+        if (typeof parsed === 'number') {
+          return { chapterId: parsed, ratio: 0 };
+        }
+      } catch { /* fall through */ }
+      // Legacy: plain string number
+      const num = Number(saved);
+      if (!isNaN(num)) return { chapterId: num, ratio: 0 };
+    }
+
+    // Migration fallback: old IndexedDB readingProgress
+    try {
+      const { db } = await import('../lib/db');
+      const progress = await db.readingProgress.get(workspaceId);
+      if (progress?.chapterId) {
+        const pos: SavedPosition = { chapterId: progress.chapterId, ratio: 0 };
+        localStorage.setItem(SAVE_KEY(workspaceId), JSON.stringify(pos));
+        return pos;
+      }
+    } catch { /* ignore */ }
+
+    return null;
+  }, [workspaceId]);
+
+  // Attach scroll listener + save on unmount
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -108,13 +115,18 @@ export function useReadingPosition(
     el.addEventListener('scroll', savePosition, { passive: true });
     return () => {
       el.removeEventListener('scroll', savePosition);
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      // Last-chance save to localStorage (sync, always works)
-      if (workspaceId && el) {
-        localStorage.setItem(`raiden-scroll-${workspaceId}`, String(el.scrollTop));
+      // Last-chance save
+      if (workspaceId) {
+        const pos = getCurrentChapter();
+        if (pos) {
+          localStorage.setItem(SAVE_KEY(workspaceId), JSON.stringify({
+            chapterId: pos.chapterId,
+            ratio: Math.round(pos.ratio * 1000) / 1000,
+          }));
+        }
       }
     };
-  }, [scrollContainerRef, savePosition, workspaceId]);
+  }, [scrollContainerRef, savePosition, workspaceId, getCurrentChapter]);
 
-  return { savePosition, restorePosition, getCurrentChapter };
+  return { savePosition, getSavedPosition, getCurrentChapter };
 }

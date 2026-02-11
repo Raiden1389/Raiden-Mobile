@@ -8,6 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      manifestFilename: 'manifest.json',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'icon.svg'],
       manifest: {
         name: 'Raiden Reader',
@@ -59,7 +60,7 @@ export default defineConfig({
     })
   ],
   server: {
-    host: true, 
+    host: true,
   },
   build: {
     outDir: '../Exe/mobile-dist',

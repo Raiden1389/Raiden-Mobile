@@ -1,10 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import {
   type ThemeMode,
   type FontFamily,
   type ReaderSettings,
   DEFAULT_SETTINGS,
+  THEME_MAP,
 } from './ReaderTypes';
 
 // ===================================================
@@ -24,6 +25,9 @@ function loadSettings(): ReaderSettings {
 
 function saveSettings(settings: ReaderSettings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  // Sync Android status bar color with theme
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_MAP[settings.theme].bg);
 }
 
 interface ReaderContextValue {
@@ -40,6 +44,12 @@ const ReaderContext = createContext<ReaderContextValue | null>(null);
 
 export function ReaderProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ReaderSettings>(loadSettings);
+
+  // Sync status bar color on mount
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_MAP[settings.theme].bg);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = useCallback((partial: Partial<ReaderSettings>) => {
     setSettings(prev => {

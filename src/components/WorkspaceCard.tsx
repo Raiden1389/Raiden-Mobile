@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 
@@ -84,20 +84,33 @@ export function WorkspaceCard({ workspace, accent, isDark, textColor }: Workspac
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   }, []);
 
-  const progress = useLiveQuery(
-    () => db.readingProgress.get(workspace.id),
-    [workspace.id]
-  );
   const chapters = useLiveQuery(
     () => db.chapters.where('workspaceId').equals(workspace.id).sortBy('order'),
     [workspace.id]
   );
 
   const chapterCount = chapters?.length ?? 0;
+
+  // New chapters detection
+  const prevCountMeta = useLiveQuery(
+    () => db.syncMeta.get(`prevChapterCount_${workspace.id}`),
+    [workspace.id]
+  );
+  const newChapters = useMemo(() => {
+    if (!prevCountMeta?.value || chapterCount === 0) return 0;
+    const prev = Number(prevCountMeta.value);
+    return Math.max(0, chapterCount - prev);
+  }, [prevCountMeta, chapterCount]);
+
   const readingIndex = (() => {
-    if (!progress?.chapterId || !chapters?.length) return 0;
-    const pid = Number(progress.chapterId);
-    return chapters.filter(c => Number(c.order) <= pid).length;
+    if (!chapters?.length) return 0;
+    // Read from localStorage (new format)
+    const savedId = localStorage.getItem(`raiden-lastChapter-${workspace.id}`);
+    if (!savedId) return 0;
+    const chapterId = Number(savedId);
+    // Find the chapter by its DB id, then get its position in sorted order
+    const idx = chapters.findIndex(c => c.id === chapterId);
+    return idx >= 0 ? idx + 1 : 0;
   })();
   const progressPct = chapterCount > 0 && readingIndex > 0
     ? Math.round((readingIndex / chapterCount) * 100)
@@ -117,6 +130,12 @@ export function WorkspaceCard({ workspace, accent, isDark, textColor }: Workspac
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => { setIsPressed(false); setShowDelete(false); }}
+      onClick={() => {
+        // Mark chapters as "seen" — clear new badge
+        if (newChapters > 0) {
+          db.syncMeta.put({ key: `prevChapterCount_${workspace.id}`, value: String(chapterCount) });
+        }
+      }}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -156,6 +175,25 @@ export function WorkspaceCard({ workspace, accent, isDark, textColor }: Workspac
             ? `linear-gradient(180deg, hsl(${hue},40%,40%) 0%, hsl(${hue},30%,15%) 100%)`
             : `linear-gradient(180deg, hsl(${hue},50%,65%) 0%, hsl(${hue},40%,50%) 100%)`,
         }} />
+
+        {/* 🆕 New chapters badge */}
+        {newChapters > 0 && (
+          <div style={{
+            position: 'absolute', top: '8px', right: '8px',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            color: '#fff',
+            borderRadius: '12px',
+            padding: '3px 10px',
+            fontSize: '10px',
+            fontWeight: 800,
+            boxShadow: '0 2px 8px rgba(16,185,129,0.5)',
+            animation: 'popIn 0.3s ease',
+            zIndex: 2,
+            letterSpacing: '0.02em',
+          }}>
+            🆕 +{newChapters}
+          </div>
+        )}
 
         {/* Bottom gradient for title legibility */}
         <div style={{

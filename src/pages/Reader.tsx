@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useLayoutEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
@@ -13,6 +13,8 @@ import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useNavbar } from '../hooks/useNavbar';
 import { useDimmer } from '../hooks/useDimmer';
 import { useTocDrawer } from '../hooks/useTocDrawer';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 // Components
 import { SettingsPanel } from '../components/SettingsPanel';
@@ -50,7 +52,7 @@ export function ReaderPage() {
 
   // ── Hooks ──
   const chapterIds = allChapters?.map(c => c.id) ?? [];
-  const { restorePosition, getCurrentChapter } = useReadingPosition(workspaceId, scrollContainerRef, chapterIds);
+  const { getSavedPosition, getCurrentChapter } = useReadingPosition(workspaceId, scrollContainerRef, chapterIds);
   const { swipeProgress } = useSwipeBack();
   const { navbarVisible, handleTap, trackScroll } = useNavbar(scrollContainerRef);
   useDimmer(scrollContainerRef);
@@ -58,7 +60,20 @@ export function ReaderPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingText, setEditingText] = useState<string | null>(null);
 
+  // ── Auto-scroll ──
+  const autoScroll = useAutoScroll({ scrollContainerRef });
 
+  // ── Wake Lock (prevent screen off while reading) ──
+  useWakeLock();
+
+  // ── Track read chapters for TOC markers ──
+  const READ_KEY = `raiden-readChapters-${workspaceId}`;
+  const [readChapterIds, setReadChapterIds] = useState<Set<number>>(() => {
+    try {
+      const saved = localStorage.getItem(READ_KEY);
+      return saved ? new Set(JSON.parse(saved) as number[]) : new Set();
+    } catch { return new Set(); }
+  });
 
   const {
     visibleChapters,
@@ -74,22 +89,31 @@ export function ReaderPage() {
   const handleScroll = () => {
     infiniteHandleScroll();
     trackScroll();
+    // Track current chapter as read
+    const pos = getCurrentChapter();
+    if (pos?.chapterId && !readChapterIds.has(pos.chapterId)) {
+      setReadChapterIds(prev => {
+        const next = new Set(prev);
+        next.add(pos.chapterId);
+        localStorage.setItem(READ_KEY, JSON.stringify([...next]));
+        return next;
+      });
+    }
   };
 
-  // ── Restore reading position ──
+  // ── Restore reading position via jumpToChapter + ratio ──
   useLayoutEffect(() => {
     if (allChapters && allChapters.length > 0 && !restoredRef.current) {
       restoredRef.current = true;
-      restorePosition();
+      getSavedPosition().then(saved => {
+        if (saved) {
+          jumpToChapter(saved.chapterId, saved.ratio);
+        }
+      });
     }
-  }, [allChapters, restorePosition]);
+  }, [allChapters, getSavedPosition, jumpToChapter]);
 
-  // ── Haptic on chapter change ──
-  useEffect(() => {
-    if (currentChapterTitle && navigator.vibrate) {
-      navigator.vibrate(10);
-    }
-  }, [currentChapterTitle]);
+
 
   // ── FAB: Read selection when user taps edit button ──
   const handleEditFab = useCallback(() => {
@@ -156,11 +180,16 @@ export function ReaderPage() {
         onSettings={() => setSettingsOpen(true)}
         onCycleTheme={cycleTheme}
         onToc={openToc}
+        autoScrollActive={autoScroll.isScrolling}
+        onToggleAutoScroll={autoScroll.toggle}
+        autoScrollSpeed={autoScroll.speed}
+        onSpeedChange={autoScroll.setSpeed}
       />
 
       {/* Scroll Container */}
       <div
         ref={scrollContainerRef}
+        className="reader-scroll"
         onClick={handleTap}
         onScroll={handleScroll}
         style={{
@@ -183,6 +212,19 @@ export function ReaderPage() {
         <div ref={bottomSentinelRef} style={{ height: '1px' }} />
         {isComplete && <EndMarker />}
       </div>
+
+      {/* Top gradient fade */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: '40px',
+        background: `linear-gradient(${theme.bg}, transparent)`,
+        pointerEvents: 'none', zIndex: 5,
+      }} />
+      {/* Bottom gradient fade */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px',
+        background: `linear-gradient(transparent, ${theme.bg})`,
+        pointerEvents: 'none', zIndex: 5,
+      }} />
 
       {/* ✏️ Edit FAB — auto-hide on scroll, synced with navbar */}
       <button
@@ -226,6 +268,7 @@ export function ReaderPage() {
         onClose={closeToc}
         chapters={allChapters ?? []}
         currentChapterId={getCurrentChapter()?.chapterId ?? null}
+        readChapterIds={readChapterIds}
         theme={theme}
         onSelect={jumpToChapter}
       />

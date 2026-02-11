@@ -11,14 +11,7 @@ interface BeforeInstallPromptEvent extends Event {
  */
 export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(() => {
-    const lastDismissed = localStorage.getItem('pwa-install-dismissed');
-    if (lastDismissed) {
-      const daysAgo = (Date.now() - Number(lastDismissed)) / (1000 * 60 * 60 * 24);
-      return daysAgo < 7;
-    }
-    return false;
-  });
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     if (dismissed) return;

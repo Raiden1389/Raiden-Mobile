@@ -123,16 +123,11 @@ export function SwipeBackIndicator({ progress, accent }: { progress: number; acc
   );
 }
 
-/** Navbar with glassmorphism */
+/** Navbar with glassmorphism + auto-scroll */
 export function ReaderNavbar({
-  visible,
-  chapterTitle,
-  scrollPercent,
-  theme,
-  themeMode,
-  onSettings,
-  onCycleTheme,
-  onToc,
+  visible, chapterTitle, scrollPercent, theme, themeMode,
+  onSettings, onCycleTheme, onToc,
+  autoScrollActive, onToggleAutoScroll, autoScrollSpeed, onSpeedChange,
 }: {
   visible: boolean;
   chapterTitle: string;
@@ -142,88 +137,83 @@ export function ReaderNavbar({
   onSettings: () => void;
   onCycleTheme: () => void;
   onToc?: () => void;
+  autoScrollActive?: boolean;
+  onToggleAutoScroll?: () => void;
+  autoScrollSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
 }) {
+  const btn: React.CSSProperties = {
+    background: 'none', border: `1px solid ${theme.border}`,
+    color: theme.text, borderRadius: '8px', padding: '4px 8px',
+    fontSize: '12px', cursor: 'pointer',
+  };
+  const activeBtn: React.CSSProperties = {
+    ...btn, background: `${theme.accent}25`, borderColor: theme.accent,
+  };
+
   return (
-    <header style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      padding: '12px 16px',
-      background: `${theme.bg}dd`,
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
-      borderBottom: `1px solid ${theme.border}`,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      zIndex: 50,
-      transition: 'transform 0.25s ease, opacity 0.25s ease',
-      transform: visible ? 'translateY(0)' : 'translateY(-100%)',
-      opacity: visible ? 1 : 0,
-    }}>
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: '70px' }}>
-        <a href="/" style={{
-          color: theme.text, textDecoration: 'none',
-          fontSize: '13px', fontWeight: 700, opacity: 0.7,
-        }}>
-          ←
-        </a>
-        {onToc && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onToc(); }}
-            style={{
-              background: 'none', border: `1px solid ${theme.border}`,
-              color: theme.text, borderRadius: '8px', padding: '4px 10px',
-              fontSize: '13px', cursor: 'pointer',
-            }}
-          >📑</button>
-        )}
-      </div>
-      <span style={{
-        fontSize: '11px', fontWeight: 700, opacity: 0.5,
-        flex: 1, textAlign: 'center',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        padding: '0 8px',
+    <>
+      <header style={{
+        position: 'fixed', top: 0, left: 0, right: 0,
+        padding: '12px 16px',
+        background: `${theme.bg}dd`,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: `1px solid ${theme.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        zIndex: 50,
+        transition: 'transform 0.25s ease, opacity 0.25s ease',
+        transform: visible ? 'translateY(0)' : 'translateY(-100%)',
+        opacity: visible ? 1 : 0,
       }}>
-        {chapterTitle || `${scrollPercent}%`}
-      </span>
-      <div style={{ display: 'flex', gap: '6px', minWidth: '80px', justifyContent: 'flex-end' }}>
-        <button
-          onClick={(e) => {
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: '50px' }}>
+          <a href="/" style={{ color: theme.text, textDecoration: 'none', fontSize: '13px', fontWeight: 700, opacity: 0.7 }}>←</a>
+          {onToc && <button onClick={(e) => { e.stopPropagation(); onToc(); }} style={btn}>📑</button>}
+        </div>
+        <span style={{
+          fontSize: '11px', fontWeight: 700, opacity: 0.5,
+          flex: 1, textAlign: 'center',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          padding: '0 4px',
+        }}>
+          {chapterTitle || `${scrollPercent}%`}
+        </span>
+        <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
+          {onToggleAutoScroll && (
+            <button onClick={(e) => { e.stopPropagation(); onToggleAutoScroll(); }}
+              style={autoScrollActive ? activeBtn : btn}>📜</button>
+          )}
+          <button onClick={(e) => {
             e.stopPropagation();
-            if (document.fullscreenElement) {
-              document.exitFullscreen();
-            } else {
-              document.documentElement.requestFullscreen?.();
-            }
-          }}
-          style={{
-            background: 'none', border: `1px solid ${theme.border}`,
-            color: theme.text, borderRadius: '8px', padding: '4px 8px',
-            fontSize: '12px', cursor: 'pointer',
-          }}
-        >{document.fullscreenElement ? '⬜' : '📱'}</button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onSettings(); }}
-          style={{
-            background: 'none', border: `1px solid ${theme.border}`,
-            color: theme.text, borderRadius: '8px', padding: '4px 8px',
-            fontSize: '12px', cursor: 'pointer',
-          }}
-        >⚙️</button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onCycleTheme(); }}
-          style={{
-            background: 'none', border: `1px solid ${theme.border}`,
-            color: theme.text, borderRadius: '8px', padding: '4px 8px',
-            fontSize: '12px', cursor: 'pointer',
-          }}
-        >
-          {themeMode === 'dark' ? '🌙' : themeMode === 'sepia' ? '📜' : '☀️'}
-        </button>
-      </div>
-    </header>
+            if (document.fullscreenElement) { document.exitFullscreen(); } else { document.documentElement.requestFullscreen?.(); }
+          }} style={btn}>{document.fullscreenElement ? '⬜' : '📱'}</button>
+          <button onClick={(e) => { e.stopPropagation(); onSettings(); }} style={btn}>⚙️</button>
+          <button onClick={(e) => { e.stopPropagation(); onCycleTheme(); }} style={btn}>
+            {themeMode === 'dark' ? '🌙' : themeMode === 'sepia' ? '📜' : '☀️'}
+          </button>
+        </div>
+      </header>
+
+      {/* Thin bottom bar — only when auto-scroll active */}
+      {autoScrollActive && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, height: '40px',
+          background: `${theme.bg}ee`,
+          backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+          borderTop: `1px solid ${theme.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '12px', zIndex: 50, padding: '0 16px',
+        }}>
+          <button onClick={onToggleAutoScroll} style={{ ...btn, padding: '2px 8px', fontSize: '11px' }}>⏸ Dừng</button>
+          <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 700 }}>🐢</span>
+          <input type="range" min={1} max={5} step={0.5} value={autoScrollSpeed}
+            onChange={e => onSpeedChange?.(Number(e.target.value))}
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100px', accentColor: theme.accent }} />
+          <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 700 }}>🐇</span>
+        </div>
+      )}
+    </>
   );
 }
 
