@@ -94,6 +94,29 @@ export function SelectionBubble({ text, rect, theme, scrollContainerRef, onEdit,
       >
         📋 Copy
       </button>
+      {/* Share button (#5) — Web Share API */}
+      {typeof navigator.share === 'function' && (
+        <button
+          onClick={() => {
+            navigator.share({ text }).catch(() => {
+              navigator.clipboard.writeText(text);
+            });
+          }}
+          style={{
+            background: 'transparent',
+            color: theme.text,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '8px',
+            padding: '6px 12px',
+            fontSize: '12px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          📤
+        </button>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { ThemeColors } from '../contexts/ReaderTypes';
 import { DropCap } from './DropCap';
 
@@ -6,10 +6,40 @@ import { DropCap } from './DropCap';
 // READER SUB-COMPONENTS
 // ===================================================
 
-/** Gradient chapter divider with title */
+/** Render text with dialogue (quoted text) in italic */
+function renderWithDialogue(text: string): React.ReactNode {
+  // Match: "...", "...", «...», '...', 「...」
+  const parts = text.split(/([""\u201C«»\u2018\u2019\u300C\u300D][^""\u201C«»\u2018\u2019\u300C\u300D]*[""\u201C«»\u2018\u2019\u300C\u300D])/g);
+  if (parts.length <= 1) return text;
+  return parts.map((part, i) => {
+    if (/^[""\u201C«»\u2018\u300C]/.test(part) && /[""\u201C«»\u2019\u300D]$/.test(part)) {
+      return <em key={i} style={{ fontStyle: 'italic' }}>{part}</em>;
+    }
+    return part;
+  });
+}
+
+/** Chapter divider decorations (#54) */
+const DIVIDER_DECORATIONS = ['· · ·', '✦', 'ꕥ', '❖', '◆', '∗ ∗ ∗', '⁂', '❦'];
+
+function getDividerDecoration(title: string): string {
+  const hash = title.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return DIVIDER_DECORATIONS[hash % DIVIDER_DECORATIONS.length];
+}
+
+/** Gradient chapter divider with title + decoration variant (#54) */
 export function ChapterDivider({ title, theme }: { title: string; theme: ThemeColors }) {
+  const decoration = getDividerDecoration(title);
   return (
     <div style={{ textAlign: 'center', padding: '48px 0', opacity: 0.35 }}>
+      <div style={{
+        fontSize: '16px',
+        letterSpacing: '8px',
+        marginBottom: '12px',
+        color: theme.text,
+      }}>
+        {decoration}
+      </div>
       <div style={{
         height: '1px',
         background: `linear-gradient(to right, transparent, ${theme.text}40, transparent)`,
@@ -28,21 +58,46 @@ export function ChapterDivider({ title, theme }: { title: string; theme: ThemeCo
   );
 }
 
-/** Single chapter rendering */
+/** Single chapter rendering — #58 memoized content */
 export const ChapterBlock = React.memo(function ChapterBlock({
   chapter,
   fontSize,
   showDivider,
   theme,
+  paragraphSpacing = 1,
+  textAlign = 'justify',
+  showDropCap = true,
 }: {
   chapter: { id: number; order: number; title: string; title_translated?: string; content_translated?: string; content_original: string };
   fontSize: number;
   showDivider: boolean;
   theme: ThemeColors;
+  paragraphSpacing?: number;
+  textAlign?: 'justify' | 'left';
+  showDropCap?: boolean;
 }) {
   const title = chapter.title_translated || chapter.title;
   const content = chapter.content_translated || chapter.content_original || '';
-  const paragraphs = content.split('\n').filter(p => p.trim());
+
+  // #58: Memoize paragraph rendering to avoid recreating JSX nodes
+  const renderedParagraphs = useMemo(() => {
+    const paragraphs = content.split('\n').filter(p => p.trim());
+    return paragraphs.map((paragraph, pIdx) => {
+      const firstChar = (pIdx === 0 && showDropCap) ? paragraph.match(/\p{L}/u)?.[0] : null;
+      const restText = pIdx === 0 && firstChar
+        ? paragraph.slice(paragraph.indexOf(firstChar) + firstChar.length)
+        : paragraph;
+
+      return (
+        <p key={pIdx} style={{ marginBottom: `${paragraphSpacing}em`, textIndent: pIdx === 0 ? 0 : '2em', textAlign }}>
+          {pIdx === 0 && firstChar && (
+            <DropCap char={firstChar} color={theme.accent} fontFamily="serif" />
+          )}
+          {renderWithDialogue(restText)}
+        </p>
+      );
+    });
+  }, [content, paragraphSpacing, textAlign, showDropCap, theme.accent]);
 
   return (
     <div data-chapter-id={chapter.id} data-chapter-order={chapter.order}>
@@ -59,21 +114,7 @@ export const ChapterBlock = React.memo(function ChapterBlock({
       </h2>
 
       <div style={{ marginBottom: '60px' }}>
-        {paragraphs.map((paragraph, pIdx) => {
-          const firstChar = pIdx === 0 ? paragraph.match(/\p{L}/u)?.[0] : null;
-          const restText = pIdx === 0 && firstChar
-            ? paragraph.slice(paragraph.indexOf(firstChar) + firstChar.length)
-            : paragraph;
-
-          return (
-            <p key={pIdx} style={{ marginBottom: '1em', textIndent: pIdx === 0 ? 0 : '2em', textAlign: 'justify' }}>
-              {pIdx === 0 && firstChar && (
-                <DropCap char={firstChar} color={theme.accent} fontFamily="serif" />
-              )}
-              {restText}
-            </p>
-          );
-        })}
+        {renderedParagraphs}
       </div>
     </div>
   );
@@ -189,7 +230,7 @@ export function ReaderNavbar({
           }} style={btn}>{document.fullscreenElement ? '⬜' : '📱'}</button>
           <button onClick={(e) => { e.stopPropagation(); onSettings(); }} style={btn}>⚙️</button>
           <button onClick={(e) => { e.stopPropagation(); onCycleTheme(); }} style={btn}>
-            {themeMode === 'dark' ? '🌙' : themeMode === 'sepia' ? '📜' : '☀️'}
+            {({ dark: '🌙', forest: '🌲', slate: '🌊', sepia: '📜', light: '☀️' } as Record<string, string>)[themeMode] || '🌙'}
           </button>
         </div>
       </header>

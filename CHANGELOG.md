@@ -1,5 +1,67 @@
 # Raiden Reader — Changelog
 
+## v1.7.0 (2026-02-12)
+### Reader Experience
+- 📄 **Page-Turn Mode** (#31) — Chế độ lật trang (scroll-snap), tap cạnh trái/phải để lật
+- 📐 **Margins Control** (#43) — Slider chỉnh lề trái/phải (8–48px)
+- 📏 **Max Width** (#44) — Giới hạn chiều rộng văn bản trên màn hình lớn (0–1200px)
+- 🅳 **Drop Cap Toggle** (#45) — Bật/tắt chữ cái đầu đoạn phóng to
+- ✨ **Chapter Divider Variants** (#54) — 8 ký hiệu trang trí ngẫu nhiên (· · ·, ✦, ꕥ, ❖, ◆, ∗ ∗ ∗, ⁂, ❦)
+- 🔄 **Reset Settings** (#46) — Nút khôi phục cài đặt mặc định
+- 🇻🇳 **Improved Preview Text** (#47) — Văn bản mẫu tiếng Việt có dấu
+
+### Library Enhancements
+- 🔍 **Search Workspaces** (#38) — Tìm kiếm truyện theo tên (hiện khi >5 truyện)
+- ☰/▦ **Grid/List View Toggle** (#40) — Chuyển đổi hiển thị lưới/danh sách
+- 🗑 **Batch Delete** (#42) — Chế độ xóa nhiều truyện cùng lúc (tick + xác nhận)
+
+### TOC & Navigation
+- 🔢 **Chapter Jump Input** (#34) — Nhập số chương để nhảy nhanh (hiện khi >20 chương)
+
+### Performance & Code Quality
+- ⚡ **Memoized Paragraphs** (#58) — useMemo cho paragraph rendering, tránh tạo lại JSX
+- 🧩 **SegmentedControl extracted** — Di chuyển ra module-level, tránh re-creation during render
+- 🛡 **Storage Quota Warning** (#60) — Hiển thị dung lượng IndexedDB trong Settings
+
+### Bug Fixes
+- 🎨 Fixed SegmentedControl being created during render (lint error)
+- 🧹 Removed unused DEFAULT_SETTINGS import
+- ✅ All TypeScript + ESLint clean (trừ pre-existing useEffect warnings)
+
+## v1.6.0 (2026-02-12)
+### Features
+- 📤 **Share Button** — Nút Share (Web Share API) trong Selection Bubble, bên cạnh Copy
+- 🔥 **Night Light Filter** — Lớp phủ ánh sáng ấm amber, chỉnh cường độ trong Settings
+- 📏 **Paragraph Spacing** — Slider điều chỉnh khoảng cách đoạn (0.5–2.5em)
+- ☰ **Text Alignment** — Toggle Justify / Left align
+- 🔀 **Sort Library** — Sắp xếp truyện theo Gần đây / A-Z
+- 📳 **Haptic Feedback mở rộng** — Rung khi bật/tắt Zen Mode, đổi theme
+- 🍞 **Toast System** — Hệ thống thông báo toast toàn cục (success/error/info) với auto-dismiss
+- 🎛️ **Segmented Control** — Theme picker trong Settings đổi sang segmented control premium
+- 👁️ **Live Preview** — Preview text trong Settings reflect đúng theme/font/alignment đang chọn
+- 📊 **Chapter Progress %** — TOC hiện % đọc tại chương hiện tại
+- 🛡️ **Error Boundary** — Bắt crash rendering → hiện recovery UI thay vì trắng xoá
+
+### Bug Fixes
+- 🐛 **isDark sai cho Forest/Slate** — isDark chỉ check 2 giá trị hardcode → đổi sang luminance calculation. Forest + Slate giờ đúng dark mode
+- 🐛 **cycleTheme thiếu 2 theme** — Cycle chỉ 3 themes (dark→sepia→light), bỏ qua forest+slate. Giờ cycle đủ 5 themes
+- 🐛 **Theme icon sai** — Navbar chỉ hiện 3 icon (🌙📜☀️), giờ hiện đúng icon cho forest (🌲) và slate (🌊)
+
+## v1.5.0 (2026-02-12)
+### Features
+- 🧘 **Zen Mode** — Double-tap giữa màn hình để bật/tắt. Ẩn toàn bộ UI (progress bar, navbar, gradient, FAB). Fullscreen API ẩn luôn status bar Android
+- 🌲 **Forest Theme** — Dark mode xanh lá (`#1A2A1A`) dịu mắt cho đọc đêm, accent xanh lá
+- 🌊 **Slate Theme** — Dark mode navy (`#1E2A3A`) thay thế đen tuyệt đối, accent xanh dương
+- 🔤 **2 Font mới** — Source Serif 4 (thanh mảnh, hiện đại) + Merriweather (dày, dễ đọc)
+- 💬 **Hội thoại nghiêng** — Text trong dấu ngoặc kép `"..."` tự động in nghiêng (italic)
+
+### Bug Fixes
+- 🐛 **Font không đổi được** — Root cause: Google Fonts chưa bao giờ được load! Thêm preconnect + stylesheet cho tất cả 6 fonts
+- 🔧 **Theme picker overflow** — Đổi layout từ flex row sang flex wrap cho 5 themes
+
+### Refactor
+- 🧹 **SyncDialog** — Tách God Component 403 dòng thành `useSync` hook + 7 sub-components + CSS file riêng
+
 ## v1.4.1 (2026-02-12)
 ### Bug Fixes
 - 🔧 **TOC Jump Broken** — Fix: `TocDrawer` truyền `ch.id` nhưng `jumpToChapter` nhận `ch.order`. Khi id ≠ order → jump silent fail

@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect, useRef } from 'react';
+import { useState, useLayoutEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
@@ -39,6 +39,10 @@ export function ReaderPage() {
   const { settings, cycleTheme } = useReaderSettings();
   const theme = THEME_MAP[settings.theme];
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [zenMode, setZenMode] = useState(false);
+  const [zenFlash, setZenFlash] = useState(false);
+  const lastTapRef = useRef(0);
+  const isPaginated = settings.readingMode === 'paginated'; // #31
 
   // ── Data ──
   const allChapters = useLiveQuery(
@@ -70,6 +74,49 @@ export function ReaderPage() {
     handleScroll: infiniteHandleScroll, jumpToChapter,
   } = useInfiniteScroll(allChapters, scrollContainerRef, getCurrentChapter);
 
+  // ── Zen Mode: double-tap toggle + fullscreen ──
+  // #31 — Page-turn: tap left/right edges to scroll by viewport height
+  const pageTurn = useCallback((direction: 'prev' | 'next') => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const pageH = el.clientHeight * 0.9;
+    el.scrollBy({ top: direction === 'next' ? pageH : -pageH, behavior: 'smooth' });
+  }, []);
+
+  const handleTapWithZen = useCallback((e: React.MouseEvent) => {
+    const now = Date.now();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const zone = (e.clientX - rect.left) / rect.width;
+    const isCenter = zone > 0.2 && zone < 0.8;
+
+    // Double-tap center → Zen Mode
+    if (isCenter && now - lastTapRef.current < 350) {
+      const nextZen = !zenMode;
+      setZenMode(nextZen);
+      setZenFlash(true);
+      setTimeout(() => setZenFlash(false), 1200);
+      try { navigator.vibrate?.(nextZen ? [15, 50, 15] : 30); } catch { /* ignore */ }
+      try {
+        if (nextZen && !document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.();
+        } else if (!nextZen && document.fullscreenElement) {
+          document.exitFullscreen?.();
+        }
+      } catch { /* ignore fullscreen errors */ }
+      lastTapRef.current = 0;
+      return;
+    }
+    lastTapRef.current = now;
+
+    // #31 — Page-turn mode: single-tap left/right edge to flip page
+    if (isPaginated && !isCenter) {
+      pageTurn(zone < 0.2 ? 'prev' : 'next');
+      return;
+    }
+
+    if (!zenMode) handleTap(e);
+  }, [zenMode, handleTap, isPaginated, pageTurn]);
+
   // ── Combined scroll handler ──
   const handleScroll = () => {
     infiniteHandleScroll();
@@ -83,7 +130,10 @@ export function ReaderPage() {
     if (allChapters && allChapters.length > 0 && !restoredRef.current) {
       restoredRef.current = true;
       getSavedPosition().then(saved => {
-        if (saved) jumpToChapter(saved.chapterOrder, saved.ratio);
+        if (saved) {
+          // Delay to let useInfiniteScroll expand loadedRange and React re-render
+          setTimeout(() => jumpToChapter(saved.chapterOrder, saved.ratio), 100);
+        }
       });
     }
   }, [allChapters, getSavedPosition, jumpToChapter]);
@@ -113,45 +163,59 @@ export function ReaderPage() {
       lineHeight: settings.lineHeight,
       overflow: 'hidden',
     }}>
-      <ProgressBar percent={scrollPercent} accent={theme.accent} />
+      {!zenMode && <ProgressBar percent={scrollPercent} accent={theme.accent} />}
 
-      <ReaderNavbar
-        visible={navbarVisible}
-        chapterTitle={currentChapterTitle}
-        scrollPercent={scrollPercent}
-        theme={theme}
-        themeMode={settings.theme}
-        onSettings={() => setSettingsOpen(true)}
-        onCycleTheme={cycleTheme}
-        onToc={openToc}
-        autoScrollActive={autoScroll.isScrolling}
-        onToggleAutoScroll={autoScroll.toggle}
-        autoScrollSpeed={autoScroll.speed}
-        onSpeedChange={autoScroll.setSpeed}
-      />
+      {!zenMode && (
+        <ReaderNavbar
+          visible={navbarVisible}
+          chapterTitle={currentChapterTitle}
+          scrollPercent={scrollPercent}
+          theme={theme}
+          themeMode={settings.theme}
+          onSettings={() => setSettingsOpen(true)}
+          onCycleTheme={cycleTheme}
+          onToc={openToc}
+          autoScrollActive={autoScroll.isScrolling}
+          onToggleAutoScroll={autoScroll.toggle}
+          autoScrollSpeed={autoScroll.speed}
+          onSpeedChange={autoScroll.setSpeed}
+        />
+      )}
 
       {/* Scroll Container */}
       <div
         ref={scrollContainerRef}
         className="reader-scroll"
-        onClick={handleTap}
+        onClick={handleTapWithZen}
         onScroll={handleScroll}
         style={{
           position: 'relative',
           height: '100%', overflowY: 'auto',
           overscrollBehavior: 'none',
           WebkitOverflowScrolling: 'touch',
-          padding: '20px', paddingTop: '40px', paddingBottom: '80px',
+          paddingLeft: `${settings.margins}px`, // #43
+          paddingRight: `${settings.margins}px`, // #43
+          paddingTop: '40px', paddingBottom: '80px',
+          // #44 maxWidth constraint
+          ...(settings.maxWidth > 0 ? { maxWidth: `${settings.maxWidth}px`, margin: '0 auto' } : {}),
+          // #31 page-turn snap
+          ...(isPaginated ? { scrollSnapType: 'y mandatory' as const } : {}),
         }}
       >
         {visibleChapters.map((chapter, idx) => (
-          <ChapterBlock
-            key={chapter.id}
-            chapter={chapter}
-            fontSize={settings.fontSize}
-            showDivider={idx > 0}
-            theme={theme}
-          />
+          <div key={chapter.id}
+            style={isPaginated ? { scrollSnapAlign: 'start' } : undefined}
+          >
+            <ChapterBlock
+              chapter={chapter}
+              fontSize={settings.fontSize}
+              showDivider={idx > 0}
+              theme={theme}
+              paragraphSpacing={settings.paragraphSpacing}
+              textAlign={settings.textAlign}
+              showDropCap={settings.showDropCap}
+            />
+          </div>
         ))}
 
         <div ref={bottomSentinelRef} style={{ height: '1px' }} />
@@ -159,16 +223,20 @@ export function ReaderPage() {
       </div>
 
       {/* Gradient fades */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: '40px',
-        background: `linear-gradient(${theme.bg}, transparent)`,
-        pointerEvents: 'none', zIndex: 5,
-      }} />
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px',
-        background: `linear-gradient(transparent, ${theme.bg})`,
-        pointerEvents: 'none', zIndex: 5,
-      }} />
+      {!zenMode && (
+        <>
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, height: '40px',
+            background: `linear-gradient(${theme.bg}, transparent)`,
+            pointerEvents: 'none', zIndex: 5,
+          }} />
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px',
+            background: `linear-gradient(transparent, ${theme.bg})`,
+            pointerEvents: 'none', zIndex: 5,
+          }} />
+        </>
+      )}
 
       {/* ✏️ Edit FAB — fallback for manual find & replace */}
       <button
@@ -209,11 +277,35 @@ export function ReaderPage() {
         onClose={closeToc}
         chapters={allChapters ?? []}
         currentChapterId={getCurrentChapter()?.chapterId ?? null}
+        currentChapterProgress={scrollPercent}
         readChapterIds={readChapterIds}
         theme={theme}
         onSelect={jumpToChapter}
       />
-      <SwipeBackIndicator progress={swipeProgress} accent={theme.accent} />
+      {!zenMode && <SwipeBackIndicator progress={swipeProgress} accent={theme.accent} />}
+
+      {/* Zen Mode indicator */}
+      {zenFlash && (
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: '48px', zIndex: 300,
+          animation: 'zenFade 1.2s ease forwards',
+          pointerEvents: 'none',
+        }}>
+          {zenMode ? '🧘' : '📖'}
+        </div>
+      )}
+
+      {/* Night Light amber overlay (#8) */}
+      {settings.nightLightIntensity > 0 && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: `rgba(255, 170, 50, ${settings.nightLightIntensity})`,
+          pointerEvents: 'none', zIndex: 199,
+          mixBlendMode: 'multiply',
+        }} />
+      )}
 
       {/* Dimmer */}
       {settings.dimmerOpacity > 0 && (
@@ -226,6 +318,7 @@ export function ReaderPage() {
       <style>{`
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes zenFade { 0% { opacity: 0.9; transform: translate(-50%,-50%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(1.5); } }
       `}</style>
     </div>
   );

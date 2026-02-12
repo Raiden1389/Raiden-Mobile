@@ -11,7 +11,13 @@ type FilterStatus = 'all' | 'pending' | 'pushed';
 export function CorrectionsPage() {
   const { settings } = useReaderSettings();
   const theme = THEME_MAP[settings.theme];
-  const isDark = theme.bg === '#000000' || theme.bg === '#1a1a2e';
+  const isDark = (() => {
+    const hex = theme.bg.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+  })();
   const navigate = useNavigate();
 
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');

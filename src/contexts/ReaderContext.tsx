@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import {
   type ThemeMode,
   type FontFamily,
+  type ReadingMode,
   type ReaderSettings,
   DEFAULT_SETTINGS,
   THEME_MAP,
@@ -38,6 +39,14 @@ interface ReaderContextValue {
   setFontSize: (size: number) => void;
   setLineHeight: (height: number) => void;
   setDimmerOpacity: (opacity: number) => void;
+  setParagraphSpacing: (spacing: number) => void;
+  setTextAlign: (align: 'justify' | 'left') => void;
+  setNightLightIntensity: (intensity: number) => void;
+  setReadingMode: (mode: ReadingMode) => void; // #31
+  setMargins: (px: number) => void; // #43
+  setMaxWidth: (px: number) => void; // #44
+  setShowDropCap: (show: boolean) => void; // #45
+  resetSettings: () => void; // #46
 }
 
 const ReaderContext = createContext<ReaderContextValue | null>(null);
@@ -61,12 +70,17 @@ export function ReaderProvider({ children }: { children: ReactNode }) {
 
   const cycleTheme = useCallback(() => {
     setSettings(prev => {
-      const order: ThemeMode[] = ['dark', 'sepia', 'light'];
+      const order: ThemeMode[] = ['dark', 'forest', 'slate', 'sepia', 'light'];
       const idx = order.indexOf(prev.theme);
-      const next = { ...prev, theme: order[(idx + 1) % 3] };
+      const next = { ...prev, theme: order[(idx + 1) % order.length] };
       saveSettings(next);
       return next;
     });
+  }, []);
+
+  const resetSettings = useCallback(() => {
+    saveSettings(DEFAULT_SETTINGS);
+    setSettings(DEFAULT_SETTINGS);
   }, []);
 
   return (
@@ -78,6 +92,14 @@ export function ReaderProvider({ children }: { children: ReactNode }) {
       setFontSize: (fontSize) => update({ fontSize }),
       setLineHeight: (lineHeight) => update({ lineHeight }),
       setDimmerOpacity: (dimmerOpacity) => update({ dimmerOpacity }),
+      setParagraphSpacing: (paragraphSpacing) => update({ paragraphSpacing }),
+      setTextAlign: (textAlign) => update({ textAlign }),
+      setNightLightIntensity: (nightLightIntensity) => update({ nightLightIntensity }),
+      setReadingMode: (readingMode) => update({ readingMode }),
+      setMargins: (margins) => update({ margins }),
+      setMaxWidth: (maxWidth) => update({ maxWidth }),
+      setShowDropCap: (showDropCap) => update({ showDropCap }),
+      resetSettings,
     }}>
       {children}
     </ReaderContext.Provider>

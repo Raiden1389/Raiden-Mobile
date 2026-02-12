@@ -250,7 +250,8 @@ export class SyncService {
    * @param onProgress callback with (loaded, total, currentWorkspaceName)
    */
   async downloadLibrary(
-    onProgress?: (loaded: number, total: number, currentWs?: string) => void
+    onProgress?: (loaded: number, total: number, currentWs?: string) => void,
+    wsFilter?: string[]
   ): Promise<{ workspaces: number; chapters: number }> {
     if (!this.config) throw new Error('Not connected. Scan QR first.');
 
@@ -265,9 +266,14 @@ export class SyncService {
     let totalLoaded = 0;
     const totalChapters = manifest.totalChapters;
 
-    // 2. Download each workspace
-    for (const wsInfo of manifest.workspaces) {
-      onProgress?.(totalLoaded, totalChapters, wsInfo.title);
+    // 2. Download each workspace (filtered if wsFilter provided)
+    const workspacesToSync = wsFilter
+      ? manifest.workspaces.filter(ws => wsFilter.includes(ws.id))
+      : manifest.workspaces;
+    const totalChaptersFiltered = workspacesToSync.reduce((s, ws) => s + ws.chapterCount, 0);
+
+    for (const wsInfo of workspacesToSync) {
+      onProgress?.(totalLoaded, totalChaptersFiltered, wsInfo.title);
 
       // 2a. Workspace metadata
       const wsRes = await fetch(`${baseUrl}/workspace?id=${wsInfo.id}`, { headers });

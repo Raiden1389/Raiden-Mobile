@@ -80,7 +80,7 @@ export function useInfiniteScroll(
           const top = target.offsetTop + target.offsetHeight * pendingRatioRef.current;
           el.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
         } else {
-          target.scrollIntoView({ behavior: 'auto', block: 'start' });
+          el.scrollTo({ top: target.offsetTop, behavior: 'instant' as ScrollBehavior });
         }
         pendingJumpRef.current = null;
         pendingRatioRef.current = null;
@@ -116,9 +116,11 @@ export function useInfiniteScroll(
   const jumpToChapter = useCallback((chapterOrder: number, ratio?: number) => {
     if (!allChapters?.length) return;
     const idx = allChapters.findIndex(c => c.order === chapterOrder);
+    console.log(`[JumpTo] order=${chapterOrder}, idx=${idx}, total=${allChapters.length}`);
     if (idx === -1) return;
 
     const chapterId = allChapters[idx].id;
+    console.log(`[JumpTo] chapterId=${chapterId}, currentRange=${JSON.stringify(loadedRange)}`);
 
     // Expand range to include this chapter + a few extra
     const neededEnd = Math.min(idx + 3, allChapters.length);
@@ -128,16 +130,18 @@ export function useInfiniteScroll(
     setLoadedRange(prev => {
       if (neededEnd <= prev.end) {
         // Already loaded — scroll immediately
+        console.log(`[JumpTo] Already loaded, scrolling now`);
         requestAnimationFrame(() => {
           const el = scrollContainerRef.current;
           if (!el) return;
           const target = el.querySelector(`[data-chapter-id="${chapterId}"]`) as HTMLElement;
+          console.log(`[JumpTo] Found target: ${!!target}`);
           if (target) {
             if (ratio !== undefined) {
               const top = target.offsetTop + target.offsetHeight * ratio;
               el.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
             } else {
-              target.scrollIntoView({ behavior: 'auto', block: 'start' });
+              el.scrollTo({ top: target.offsetTop, behavior: 'instant' as ScrollBehavior });
             }
             pendingJumpRef.current = null;
             pendingRatioRef.current = null;
@@ -145,9 +149,10 @@ export function useInfiniteScroll(
         });
         return prev;
       }
+      console.log(`[JumpTo] Expanding range: ${prev.end} → ${neededEnd}`);
       return { ...prev, end: neededEnd };
     });
-  }, [allChapters, scrollContainerRef]);
+  }, [allChapters, scrollContainerRef, loadedRange]);
 
   const visibleChapters = allChapters?.slice(loadedRange.start, loadedRange.end) ?? [];
   const isComplete = allChapters ? loadedRange.end >= allChapters.length : false;

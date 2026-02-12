@@ -1,33 +1,42 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
-    <meta name="theme-color" content="#8b5cf6" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Raiden Reader</title>
-  </head>
-  <body>
-    <script>
-      // No-Flash Theme: set bg BEFORE React mount to avoid white flash
-      (function(){
-        try {
-          var s = JSON.parse(localStorage.getItem('raiden-reader-settings') || '{}');
-          var themes = { dark: '#000000', sepia: '#F4ECD8', light: '#FAFAFA' };
-          var bg = themes[s.theme] || '#000000';
-          document.body.style.backgroundColor = bg;
-          var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', bg);
-        } catch(e) {
-          document.body.style.backgroundColor = '#000000';
-        }
-      })();
-    </script>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="theme-color" content="#8b5cf6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <!-- Google Fonts for Reader -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:ital,wght@0,400;0,700;1,400;1,700&family=Merriweather:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <title>Raiden Reader</title>
+</head>
+
+<body>
+  <script>
+    // No-Flash Theme: set bg BEFORE React mount to avoid white flash
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem('raiden-reader-settings') || '{}');
+        var themes = { dark: '#000000', sepia: '#F4ECD8', light: '#FAFAFA', forest: '#1A2A1A', slate: '#1E2A3A' };
+        var bg = themes[s.theme] || '#000000';
+        document.body.style.backgroundColor = bg;
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', bg);
+      } catch (e) {
+        document.body.style.backgroundColor = '#000000';
+      }
+    })();
+  </script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

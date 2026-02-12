@@ -104,13 +104,23 @@ export function WorkspaceCard({ workspace, accent, isDark, textColor }: Workspac
 
   const readingIndex = (() => {
     if (!chapters?.length) return 0;
-    // Read from localStorage (new format)
-    const savedId = localStorage.getItem(`raiden-lastChapter-${workspace.id}`);
-    if (!savedId) return 0;
-    const chapterId = Number(savedId);
-    // Find the chapter by its DB id, then get its position in sorted order
-    const idx = chapters.findIndex(c => c.id === chapterId);
-    return idx >= 0 ? idx + 1 : 0;
+    // Read from localStorage (new format: JSON with chapterOrder)
+    const raw = localStorage.getItem(`raiden-lastChapter-${workspace.id}`);
+    if (!raw) return 0;
+    try {
+      const parsed = JSON.parse(raw);
+      const order = parsed.chapterOrder ?? parsed.chapterId;
+      if (order === undefined) return 0;
+      // Find chapter by order field
+      const idx = chapters.findIndex(c => c.order === order);
+      return idx >= 0 ? idx + 1 : 0;
+    } catch {
+      // Legacy: raw value might be a plain number
+      const chapterId = Number(raw);
+      if (isNaN(chapterId)) return 0;
+      const idx = chapters.findIndex(c => c.id === chapterId);
+      return idx >= 0 ? idx + 1 : 0;
+    }
   })();
   const progressPct = chapterCount > 0 && readingIndex > 0
     ? Math.round((readingIndex / chapterCount) * 100)
