@@ -9,7 +9,7 @@ import { db } from '../lib/db';
 export function useInfiniteScroll(
   allChapters: Chapter[] | undefined,
   scrollContainerRef: React.RefObject<HTMLDivElement | null>,
-  getCurrentChapter: () => { chapterId: number; ratio: number } | null
+  getCurrentChapter: () => { chapterId: number; chapterOrder: number; ratio: number } | null
 ) {
   const [loadedRange, setLoadedRange] = useState({ start: 0, end: 5 });
   const [scrollPercent, setScrollPercent] = useState(0);
@@ -30,10 +30,9 @@ export function useInfiniteScroll(
 
     db.readingProgress.get(wsId).then(progress => {
       if (!progress) return;
-      const idx = allChapters.findIndex(c => c.id === progress.chapterId);
-      if (idx === -1 || idx < 5) return; // Already within initial range
+      const idx = allChapters.findIndex(c => c.order === progress.chapterId);
+      if (idx === -1 || idx < 5) return;
 
-      // Expand to include saved chapter + a few extra
       setLoadedRange({ start: 0, end: Math.min(idx + 3, allChapters.length) });
     });
   }, [allChapters]);
@@ -109,10 +108,12 @@ export function useInfiniteScroll(
   }, [getCurrentChapter, allChapters, scrollContainerRef]);
 
   // Jump to a specific chapter — expand loaded range if needed
-  const jumpToChapter = useCallback((chapterId: number, ratio?: number) => {
+  const jumpToChapter = useCallback((chapterOrder: number, ratio?: number) => {
     if (!allChapters?.length) return;
-    const idx = allChapters.findIndex(c => c.id === chapterId);
+    const idx = allChapters.findIndex(c => c.order === chapterOrder);
     if (idx === -1) return;
+
+    const chapterId = allChapters[idx].id;
 
     // Expand range to include this chapter + a few extra
     const neededEnd = Math.min(idx + 3, allChapters.length);

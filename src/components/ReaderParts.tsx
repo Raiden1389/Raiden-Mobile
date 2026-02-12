@@ -35,7 +35,7 @@ export const ChapterBlock = React.memo(function ChapterBlock({
   showDivider,
   theme,
 }: {
-  chapter: { id: number; title: string; title_translated?: string; content_translated?: string; content_original: string };
+  chapter: { id: number; order: number; title: string; title_translated?: string; content_translated?: string; content_original: string };
   fontSize: number;
   showDivider: boolean;
   theme: ThemeColors;
@@ -45,7 +45,7 @@ export const ChapterBlock = React.memo(function ChapterBlock({
   const paragraphs = content.split('\n').filter(p => p.trim());
 
   return (
-    <div data-chapter-id={chapter.id}>
+    <div data-chapter-id={chapter.id} data-chapter-order={chapter.order}>
       {showDivider && <ChapterDivider title={title} theme={theme} />}
 
       <h2 style={{

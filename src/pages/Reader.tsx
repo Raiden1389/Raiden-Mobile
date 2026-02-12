@@ -1,10 +1,9 @@
-import { useState, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useLayoutEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { useReaderSettings } from '../contexts/ReaderContext';
 import { THEME_MAP } from '../contexts/ReaderTypes';
-import { applyCorrection } from '../lib/corrections';
 
 // Hooks
 import { useReadingPosition } from '../hooks/useReadingPosition';
@@ -15,6 +14,8 @@ import { useDimmer } from '../hooks/useDimmer';
 import { useTocDrawer } from '../hooks/useTocDrawer';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useWakeLock } from '../hooks/useWakeLock';
+import { useReadChapters } from '../hooks/useReadChapters';
+import { useTextCorrection } from '../hooks/useTextCorrection';
 
 // Components
 import { SettingsPanel } from '../components/SettingsPanel';
@@ -29,14 +30,15 @@ import {
 } from '../components/ReaderParts';
 
 // ===================================================
-// READER PAGE — Orchestrator
-// Flow: select text natively → tap ✏️ FAB → dialog pre-filled → save
+// READER PAGE — Pure Orchestrator
+// All logic extracted into hooks, this file is layout only
 // ===================================================
 
 export function ReaderPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const { settings, cycleTheme } = useReaderSettings();
   const theme = THEME_MAP[settings.theme];
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ── Data ──
   const allChapters = useLiveQuery(
@@ -57,92 +59,34 @@ export function ReaderPage() {
   const { navbarVisible, handleTap, trackScroll } = useNavbar(scrollContainerRef);
   useDimmer(scrollContainerRef);
   const { tocOpen, openToc, closeToc } = useTocDrawer();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [editingText, setEditingText] = useState<string | null>(null);
-
-  // ── Auto-scroll ──
   const autoScroll = useAutoScroll({ scrollContainerRef });
-
-  // ── Wake Lock (prevent screen off while reading) ──
   useWakeLock();
-
-  // ── Track read chapters for TOC markers ──
-  const READ_KEY = `raiden-readChapters-${workspaceId}`;
-  const [readChapterIds, setReadChapterIds] = useState<Set<number>>(() => {
-    try {
-      const saved = localStorage.getItem(READ_KEY);
-      return saved ? new Set(JSON.parse(saved) as number[]) : new Set();
-    } catch { return new Set(); }
-  });
+  const { readChapterIds, markAsRead } = useReadChapters(workspaceId);
+  const correction = useTextCorrection({ workspaceId, getCurrentChapter, allChapters });
 
   const {
-    visibleChapters,
-    isComplete,
-    scrollPercent,
-    currentChapterTitle,
-    bottomSentinelRef,
-    handleScroll: infiniteHandleScroll,
-    jumpToChapter,
+    visibleChapters, isComplete, scrollPercent,
+    currentChapterTitle, bottomSentinelRef,
+    handleScroll: infiniteHandleScroll, jumpToChapter,
   } = useInfiniteScroll(allChapters, scrollContainerRef, getCurrentChapter);
 
   // ── Combined scroll handler ──
   const handleScroll = () => {
     infiniteHandleScroll();
     trackScroll();
-    // Track current chapter as read
     const pos = getCurrentChapter();
-    if (pos?.chapterId && !readChapterIds.has(pos.chapterId)) {
-      setReadChapterIds(prev => {
-        const next = new Set(prev);
-        next.add(pos.chapterId);
-        localStorage.setItem(READ_KEY, JSON.stringify([...next]));
-        return next;
-      });
-    }
+    if (pos?.chapterId) markAsRead(pos.chapterId);
   };
 
-  // ── Restore reading position via jumpToChapter + ratio ──
+  // ── Restore reading position ──
   useLayoutEffect(() => {
     if (allChapters && allChapters.length > 0 && !restoredRef.current) {
       restoredRef.current = true;
       getSavedPosition().then(saved => {
-        if (saved) {
-          jumpToChapter(saved.chapterId, saved.ratio);
-        }
+        if (saved) jumpToChapter(saved.chapterOrder, saved.ratio);
       });
     }
   }, [allChapters, getSavedPosition, jumpToChapter]);
-
-
-
-  // ── FAB: Read selection when user taps edit button ──
-  const handleEditFab = useCallback(() => {
-    const sel = window.getSelection();
-    const text = sel?.toString().trim();
-
-    if (text && text.length > 0) {
-      // User has text selected → use it
-      setEditingText(text);
-      sel?.removeAllRanges();
-    } else {
-      // No selection → open empty find & replace
-      setEditingText('');
-    }
-  }, []);
-
-  // ── Edit save ──
-  const handleEditSave = useCallback(async (oldText: string, newText: string, scope: 'chapter' | 'all') => {
-    if (!workspaceId) return;
-
-    const pos = getCurrentChapter();
-    const currentOrder = allChapters?.find(c => c.id === pos?.chapterId)?.order ?? 0;
-
-    const count = await applyCorrection(workspaceId, oldText, newText, scope, currentOrder);
-    setEditingText(null);
-
-    if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
-    console.log(`[Edit] "${oldText}" → "${newText}" in ${count} chapter(s)`);
-  }, [workspaceId, getCurrentChapter, allChapters]);
 
   // ── Loading ──
   if (!allChapters) {
@@ -213,35 +157,31 @@ export function ReaderPage() {
         {isComplete && <EndMarker />}
       </div>
 
-      {/* Top gradient fade */}
+      {/* Gradient fades */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, height: '40px',
         background: `linear-gradient(${theme.bg}, transparent)`,
         pointerEvents: 'none', zIndex: 5,
       }} />
-      {/* Bottom gradient fade */}
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px',
         background: `linear-gradient(transparent, ${theme.bg})`,
         pointerEvents: 'none', zIndex: 5,
       }} />
 
-      {/* ✏️ Edit FAB — auto-hide on scroll, synced with navbar */}
+      {/* ✏️ Edit FAB — fallback for manual find & replace */}
       <button
-        onClick={handleEditFab}
+        onClick={correction.openEmpty}
         style={{
           position: 'fixed',
           bottom: 'max(24px, env(safe-area-inset-bottom))',
           right: '16px',
           width: '44px', height: '44px',
-          borderRadius: '50%',
-          border: 'none',
-          background: `${theme.accent}cc`,
-          color: '#fff',
+          borderRadius: '50%', border: 'none',
+          background: `${theme.accent}cc`, color: '#fff',
           fontSize: '18px',
           boxShadow: `0 2px 12px ${theme.accent}40`,
-          cursor: 'pointer',
-          zIndex: 90,
+          cursor: 'pointer', zIndex: 90,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'transform 0.25s ease, opacity 0.25s ease',
           transform: navbarVisible ? 'scale(1)' : 'scale(0)',
@@ -253,12 +193,12 @@ export function ReaderPage() {
       </button>
 
       {/* Edit Dialog */}
-      {editingText !== null && (
+      {correction.editingText !== null && (
         <EditDialog
-          paragraphText={editingText}
+          paragraphText={correction.editingText}
           theme={theme}
-          onSave={handleEditSave}
-          onCancel={() => setEditingText(null)}
+          onSave={correction.handleSave}
+          onCancel={correction.cancel}
         />
       )}
 

@@ -13,8 +13,8 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { PageTransition } from '../components/PageTransition';
 
-const APP_VERSION = '1.3.0';
-const BUILD_ID = '11/02 23h51';
+const APP_VERSION = '1.4.0';
+const BUILD_ID = '12/02 10h24';
 
 export function LibraryPage() {
   const { settings } = useReaderSettings();

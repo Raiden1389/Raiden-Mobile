@@ -10,9 +10,15 @@ interface SyncDialogProps {
   onSuccess: () => void;
 }
 
+interface WorkspaceInfo {
+  id: string;
+  title: string;
+  chapterCount: number;
+}
+
 /**
- * SyncDialog — Auto-detects Desktop sync server on same PC
- * Zero config: uses window.location.hostname to find the server
+ * SyncDialog — Library Sync: downloads ALL workspaces at once
+ * Auto-detects Desktop sync server on same network
  */
 export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
   const { settings } = useReaderSettings();
@@ -20,13 +26,14 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
 
   const [status, setStatus] = useState<'scanning' | 'found' | 'syncing' | 'done' | 'not_found' | 'error'>('scanning');
   const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+  const [currentWs, setCurrentWs] = useState('');
   const [error, setError] = useState('');
-  const [serverInfo, setServerInfo] = useState<{ ip: string; port: number; workspaceId?: string } | null>(null);
+  const [serverInfo, setServerInfo] = useState<{ ip: string; port: number } | null>(null);
+  const [manifest, setManifest] = useState<{ workspaces: WorkspaceInfo[]; totalChapters: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ workspaces: number; chapters: number } | null>(null);
 
-  // Get saved connection from last sync
   const savedConnection = useLiveQuery(() => db.syncMeta.get('lastSyncConnection'));
 
-  // Auto-discover sync server
   const discover = useCallback(async () => {
     setStatus('scanning');
     setError('');
@@ -35,19 +42,13 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
     const isHTTPS = window.location.protocol === 'https:';
     const isTunnel = hostname.includes('trycloudflare.com') || hostname.includes('ngrok') || isHTTPS;
 
-    // Build list of base URLs to try
     const urlsToTry: string[] = [];
-
     if (isTunnel) {
-      // When served via Cloudflare Tunnel, the tunnel proxies directly to port 8888
-      // So we use the current origin (https://xxx.trycloudflare.com) as the server URL
       urlsToTry.push(window.location.origin);
     } else {
-      // LAN mode: try hostname:8888
       urlsToTry.push(`http://${hostname}:8888`);
     }
 
-    // Also try saved connection
     const savedIp = savedConnection?.value ? JSON.parse(savedConnection.value).ip : null;
     if (savedIp) {
       const savedUrl = `http://${savedIp}:8888`;
@@ -58,45 +59,29 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
 
     for (const baseUrl of urlsToTry) {
       try {
-        console.log(`[SyncDialog] Checking ${baseUrl}/status ...`);
-        const res = await fetch(`${baseUrl}/status`, {
-          signal: AbortSignal.timeout(3000),
-        });
+        const res = await fetch(`${baseUrl}/status`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
           const data = await res.json();
           if (data.app === 'raiden') {
             console.log(`[SyncDialog] Found Desktop at ${baseUrl}`);
-            // Found server! Get workspace info from manifest
-            const manifestRes = await fetch(`${baseUrl}/manifest`, {
-              signal: AbortSignal.timeout(3000),
-            });
+
+            // Get manifest (list of all workspaces)
+            const manifestRes = await fetch(`${baseUrl}/manifest`, { signal: AbortSignal.timeout(5000) });
             if (manifestRes.ok) {
-              // Get workspace info
-              const wsRes = await fetch(`${baseUrl}/workspace`, {
-                signal: AbortSignal.timeout(3000),
-              });
-              const wsData = wsRes.ok ? await wsRes.json() : null;
+              const manifestData = await manifestRes.json();
 
-              const displayIp = isTunnel ? hostname : hostname;
+              const displayIp = hostname;
               const displayPort = isTunnel ? 443 : 8888;
-              setServerInfo({ ip: displayIp, port: displayPort, workspaceId: wsData?.id });
+              setServerInfo({ ip: displayIp, port: displayPort });
+              setManifest(manifestData);
 
-              // Connect syncService with the correct base URL
-              // Override parseQR to use the tunnel URL directly
-              syncService.parseQR(`raiden://sync?ip=${hostname}&port=${isTunnel ? '443' : '8888'}&token=lan&workspaceId=${wsData?.id || ''}`);
-
-              // IMPORTANT: Override serverUrl to use tunnel URL directly
-              // parseQR builds http://hostname:port but for tunnel we need https://hostname
+              // Configure syncService
+              syncService.parseQR(`raiden://sync?ip=${hostname}&port=${isTunnel ? '443' : '8888'}&token=lan`);
               if (isTunnel) {
-                (syncService as any).config = {
-                  serverUrl: baseUrl,
-                  token: 'lan',
-                };
+                (syncService as any).config = { serverUrl: baseUrl, token: 'lan' };
               }
 
               setStatus('found');
-
-              // Save this connection for future
               await db.syncMeta.put({
                 key: 'lastSyncConnection',
                 value: JSON.stringify({ ip: hostname, port: isTunnel ? 443 : 8888 }),
@@ -107,7 +92,6 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
         }
       } catch (err) {
         console.log(`[SyncDialog] Failed: ${baseUrl}`, err);
-        // Try next URL
       }
     }
 
@@ -123,18 +107,20 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
   }, []);
 
   const handleSync = async () => {
-    if (!serverInfo?.workspaceId) return;
+    if (!manifest) return;
     setStatus('syncing');
 
     try {
-      await syncService.downloadWorkspace(serverInfo.workspaceId, (loaded, total) => {
+      const result = await syncService.downloadLibrary((loaded, total, wsName) => {
         setProgress({ loaded, total });
+        if (wsName) setCurrentWs(wsName);
       });
+      setSyncResult(result);
       setStatus('done');
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 1000);
+      }, 1500);
     } catch (err: unknown) {
       console.error(err);
       setError(err instanceof Error ? err.message : String(err));
@@ -161,7 +147,7 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
         boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
       }}>
         <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>
-          📡 Đồng bộ
+          📡 Đồng bộ thư viện
         </h2>
 
         {/* Scanning */}
@@ -175,8 +161,8 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
           </div>
         )}
 
-        {/* Found — One-tap sync */}
-        {status === 'found' && serverInfo && (
+        {/* Found — Show workspace list */}
+        {status === 'found' && manifest && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{
               padding: '16px', borderRadius: '16px',
@@ -188,9 +174,38 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
                 Tìm thấy Desktop!
               </p>
               <p style={{ fontSize: '11px', opacity: 0.6, marginTop: '4px', fontFamily: 'monospace' }}>
-                {serverInfo.ip}:{serverInfo.port}
+                {serverInfo?.ip}:{serverInfo?.port}
               </p>
             </div>
+
+            {/* Workspace list */}
+            <div style={{
+              maxHeight: '200px', overflowY: 'auto',
+              borderRadius: '12px', border: `1px solid ${theme.border}`,
+            }}>
+              {manifest.workspaces.map((ws, i) => (
+                <div key={ws.id} style={{
+                  padding: '10px 14px',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  borderBottom: i < manifest.workspaces.length - 1 ? `1px solid ${theme.border}` : 'none',
+                  fontSize: '13px',
+                }}>
+                  <span style={{
+                    fontWeight: 600, flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    📖 {ws.title}
+                  </span>
+                  <span style={{ opacity: 0.5, fontSize: '11px', marginLeft: '8px', whiteSpace: 'nowrap' }}>
+                    {ws.chapterCount} ch.
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p style={{ fontSize: '12px', opacity: 0.5, textAlign: 'center' }}>
+              {manifest.workspaces.length} truyện · {manifest.totalChapters} chương
+            </p>
 
             <button
               onClick={handleSync}
@@ -202,7 +217,7 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
                 cursor: 'pointer',
               }}
             >
-              🔄 Tải truyện ngay
+              🔄 Tải tất cả
             </button>
 
             <button
@@ -220,10 +235,18 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
           </div>
         )}
 
-        {/* Syncing */}
+        {/* Syncing — progress with current workspace name */}
         {status === 'syncing' && (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <p style={{ fontWeight: 600, marginBottom: '12px' }}>Đang tải truyện...</p>
+            <p style={{ fontWeight: 600, marginBottom: '4px' }}>Đang tải truyện...</p>
+            {currentWs && (
+              <p style={{
+                fontSize: '12px', opacity: 0.6, marginBottom: '12px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                📖 {currentWs}
+              </p>
+            )}
             <div style={{
               width: '100%', height: '8px',
               background: 'rgba(255,255,255,0.1)',
@@ -241,11 +264,16 @@ export function SyncDialog({ onClose, onSuccess }: SyncDialogProps) {
           </div>
         )}
 
-        {/* Done */}
+        {/* Done — show summary */}
         {status === 'done' && (
           <div style={{ textAlign: 'center', padding: '20px 0', color: '#10b981' }}>
             <p style={{ fontSize: '40px' }}>✅</p>
             <p style={{ fontWeight: 700 }}>Hoàn tất!</p>
+            {syncResult && (
+              <p style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
+                {syncResult.workspaces} truyện · {syncResult.chapters} chương
+              </p>
+            )}
           </div>
         )}
 

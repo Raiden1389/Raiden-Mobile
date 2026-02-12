@@ -1,5 +1,18 @@
 # Raiden Reader — Changelog
 
+## v1.4.0 (2026-02-12)
+### Features
+- 📚 **Library Sync** — Sync toàn bộ thư viện (tất cả workspaces) cùng một lúc thay vì từng truyện. Dialog hiển thị danh sách workspaces + chapter counts + progress tổng
+- ✏️ **Auto-Correction** — Select text → bảng sửa lỗi tự hiện sau 400ms, không cần bấm FAB nhỏ xíu nữa. FAB vẫn giữ để mở tìm & thay thế trống
+
+### Bug Fixes
+- 🔧 **Continue Reading "Black Screen"** — Fix: saved position dùng `order` (stable qua sync) thay vì `id` (auto-increment, thay đổi mỗi lần sync). Bấm "Đọc tiếp" giờ về đúng vị trí
+- 🔧 **Corrections Routing** — Fix: sửa lỗi workspace A giờ đẩy đúng về workspace A trên Desktop, không lẫn sang workspace khác
+
+### Refactor
+- 🧹 **Reader.tsx** — Giảm từ 306 → 232 dòng. Extract `useReadChapters` + `useTextCorrection` hooks. Reader giờ là pure orchestrator
+
+
 ## v1.3.0 (2026-02-11 23h51)
 ### Features
 - 📜 **Auto-Scroll** — Nút 📜 trong navbar. Tap = tự cuộn chậm, hands-free. Bottom bar: speed slider 🐢↔🐇. Auto-stop khi hết chương

@@ -5,8 +5,9 @@ import { db, type Workspace, type Chapter, type DictionaryEntry } from './db';
 // ===================================================
 
 interface SyncManifest {
-  workspaces: { id: string; title: string; updatedAt: string }[];
+  workspaces: { id: string; title: string; chapterCount: number }[];
   totalChapters: number;
+  totalWorkspaces: number;
 }
 
 interface SyncConfig {
@@ -180,6 +181,7 @@ export class SyncService {
     }
 
     // 5. Update sync timestamp
+    console.log(`[Sync] Workspace ${workspaceId}: ${offset} chapters downloaded`);
     await db.syncMeta.put({
       key: `lastSync_${workspaceId}`,
       value: new Date().toISOString(),
@@ -241,6 +243,95 @@ export class SyncService {
       .modify({ isDirty: false });
 
     return corrections.length;
+  }
+
+  /**
+   * Download ALL workspaces from Desktop (Library Sync)
+   * @param onProgress callback with (loaded, total, currentWorkspaceName)
+   */
+  async downloadLibrary(
+    onProgress?: (loaded: number, total: number, currentWs?: string) => void
+  ): Promise<{ workspaces: number; chapters: number }> {
+    if (!this.config) throw new Error('Not connected. Scan QR first.');
+
+    const baseUrl = this.config.serverUrl;
+    const headers = { 'Authorization': `Bearer ${this.config.token}` };
+
+    // 1. Get manifest (list of all workspaces)
+    const manifestRes = await fetch(`${baseUrl}/manifest`, { headers });
+    const manifest: SyncManifest = await manifestRes.json();
+    console.log(`[Sync] Library manifest: ${manifest.totalWorkspaces} workspaces, ${manifest.totalChapters} chapters`);
+
+    let totalLoaded = 0;
+    const totalChapters = manifest.totalChapters;
+
+    // 2. Download each workspace
+    for (const wsInfo of manifest.workspaces) {
+      onProgress?.(totalLoaded, totalChapters, wsInfo.title);
+
+      // 2a. Workspace metadata
+      const wsRes = await fetch(`${baseUrl}/workspace?id=${wsInfo.id}`, { headers });
+      const wsData = await wsRes.json();
+      const workspace: Workspace = { ...wsData, id: wsData.id || wsInfo.id };
+      await db.workspaces.put(workspace);
+
+      // 2b. Dictionary
+      const dictRes = await fetch(`${baseUrl}/dictionary?workspaceId=${wsInfo.id}`, { headers });
+      const rawDict = await dictRes.json();
+      await db.dictionary.where('workspaceId').equals(wsInfo.id).delete();
+      if (Array.isArray(rawDict) && rawDict.length > 0) {
+        const dictionary: DictionaryEntry[] = rawDict.map((d: Record<string, unknown>) => ({
+          workspaceId: (d.workspaceId as string) || wsInfo.id,
+          original: d.original as string,
+          translated: d.translated as string,
+          type: (d.type as string) || 'term',
+        }));
+        await db.dictionary.bulkAdd(dictionary);
+      }
+
+      // 2c. Track previous chapter count
+      const prevCount = await db.chapters.where('workspaceId').equals(wsInfo.id).count();
+      await db.syncMeta.put({ key: `prevChapterCount_${wsInfo.id}`, value: String(prevCount) });
+
+      // 2d. Clear and re-download chapters in chunks
+      await db.chapters.where('workspaceId').equals(wsInfo.id).delete();
+      const CHUNK_SIZE = 50;
+      let offset = 0;
+
+      while (offset < wsInfo.chapterCount) {
+        const chunkRes = await fetch(
+          `${baseUrl}/chapters?workspaceId=${wsInfo.id}&offset=${offset}&limit=${CHUNK_SIZE}`,
+          { headers }
+        );
+        const rawChapters = await chunkRes.json();
+        const chapters: Chapter[] = rawChapters.map((c: Record<string, unknown>) => ({
+          workspaceId: (c.workspaceId as string) || wsInfo.id,
+          title: c.title as string,
+          content_original: c.content_original as string,
+          content_translated: c.content_translated as string | undefined,
+          title_translated: c.title_translated as string | undefined,
+          order: c.order as number,
+          status: (c.status as string) || 'draft',
+          updatedAt: c.updatedAt ? new Date(c.updatedAt as string) : new Date(),
+        }));
+        await db.chapters.bulkAdd(chapters);
+
+        offset += chapters.length;
+        totalLoaded += chapters.length;
+        onProgress?.(totalLoaded, totalChapters, wsInfo.title);
+
+        if (chapters.length === 0) break;
+      }
+
+      // 2e. Update sync timestamp
+      await db.syncMeta.put({
+        key: `lastSync_${wsInfo.id}`,
+        value: new Date().toISOString(),
+      });
+      console.log(`[Sync] ✅ ${wsInfo.title}: ${wsInfo.chapterCount} chapters`);
+    }
+
+    return { workspaces: manifest.workspaces.length, chapters: totalLoaded };
   }
 }
 
