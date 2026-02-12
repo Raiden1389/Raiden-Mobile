@@ -2,7 +2,7 @@
 
 > **Phiên bản hiện tại:** v1.7.0 (2026-02-12)
 > **Mục đích:** Tài liệu đầy đủ mọi feature đã implement. Dùng để reference khi thêm feature mới, tránh duplicate hoặc conflict.
-> **Cập nhật lần cuối:** 2026-02-12 16:23
+> **Cập nhật lần cuối:** 2026-02-13 01:45
 
 ---
 
@@ -26,7 +26,7 @@
 ```
 src/
 ├── pages/           # 3 pages: Library, Reader, Corrections
-├── components/      # 14 UI components + SyncDialog module
+├── components/      # 15 UI components (incl. Icons) + SyncDialog module
 ├── hooks/           # 16 custom hooks
 ├── contexts/        # ReaderContext (settings) + ToastContext
 ├── lib/             # db.ts (Dexie schema), sync.ts, corrections.ts
@@ -122,14 +122,19 @@ src/
   - Tap giữa vẫn hoạt động: double-tap → Zen Mode, single-tap → navbar toggle
 
 ### 2.3 Navigation
-- **Navbar** — Top bar: ← Back, title (scrolled), ⚙️ Settings, theme cycle, fullscreen toggle
+- **Navbar (Redesigned)** [v1.7.0] — Apple Books-inspired minimal design:
+  - **Default state (2 icons):** `‹` SVG back + `●` theme color dot (accent color)
+  - **Expanded toolbar:** Tap title → slide-down row: `≡` TOC, `Aa` Settings, `▶/⏸` Auto-scroll, `⛶` Fullscreen
+  - All icons are custom SVG stroke-based (`Icons.tsx`), `currentColor`, consistent across devices
+  - Theme dot `●` thay thế emoji (🌙🌲🌊📜☀️) → accent color fill, consistent trên mọi device
 - **Navbar Auto-hide** — Ẩn khi scroll xuống, hiện khi scroll lên
+- **Bottom Info Strip** [v1.7.0] — `Ch.X/N · total%` luôn hiện ở đáy màn hình, opacity 0.15–0.35
+- **Bottom Progress Line** [v1.7.0] — Thanh accent mỏng 2px ở đáy, width = % tổng truyện (chương hiện tại / tổng chương)
 - **TOC Drawer** — Slide-in từ trái, hiện toàn bộ chương: ✅ đã đọc / 📖 đang đọc / ⬜ chưa đọc
 - **TOC Chapter Progress %** [v1.6.0] — Badge % tại chương đang đọc
 - **TOC Chapter Jump Input** [v1.7.0] — Ô nhập số chương (1-N) + nút ↪ để nhảy nhanh. Chỉ hiện khi >20 chương. Component riêng `ChapterJumpInput`
 - **TOC Jump** — Tap chương → expand loadedRange + retry scroll (15 attempts × rAF)
 - **Swipe Back** — Swipe từ cạnh trái (25px) → arrow indicator → navigate về Library
-- **Progress Bar** — Bottom gradient bar, width = scroll % trong chương hiện tại
 
 ### 2.4 Reading Position Memory
 - **Pixel-Perfect Restore** — Save `{ chapterOrder, ratio }` vào localStorage mỗi 300ms throttle
@@ -143,8 +148,8 @@ src/
 - Haptic feedback [v1.6.0] — Rung pattern `[15, 50, 15]` khi bật, `30` khi tắt
 
 ### 2.6 Auto-Scroll [v1.3.0]
-- Nút 📜 trong navbar → tự cuộn
-- Bottom bar: speed slider 🐢↔🐇 (1–5 px/frame)
+- Nút `▶` (SVG) trong expanded toolbar → tự cuộn [v1.7.0 redesigned]
+- Bottom bar: speed slider `chậm ↔ nhanh` (1–5 px/frame), SVG pause icon [v1.7.0]
 - Auto-stop khi tới cuối nội dung
 - Hook: `useAutoScroll.ts` (requestAnimationFrame-based)
 
@@ -369,10 +374,11 @@ interface ReaderSettings {
 | `WorkspaceCard` | `WorkspaceCard.tsx` | Card truyện với cover pattern + progress + badge |
 | `LibraryHeader` | `LibraryHeader.tsx` | Header Library với menu + stats |
 | `LibraryToolbar` | `Library.tsx` (internal) | Search + Sort + View Toggle + Batch Delete [v1.7.0] |
-| `ReaderNavbar` | `ReaderParts.tsx` | Top navbar trong Reader |
+| `ReaderNavbar` | `ReaderParts.tsx` | Top navbar: minimal 2-icon default + expandable toolbar [v1.7.0 redesigned] |
 | `ChapterBlock` | `ReaderParts.tsx` | Render 1 chương (DropCap + paragraphs), `React.memo` + `useMemo` [v1.7.0] |
 | `ChapterDivider` | `ReaderParts.tsx` | Decorative divider + gradient line giữa chương, 8 variants [v1.7.0] |
-| `ProgressBar` | `ReaderParts.tsx` | Bottom progress bar |
+| `ProgressBar` | `ReaderParts.tsx` | Top progress bar (scroll %) |
+| `Icons` | `Icons.tsx` | 8 SVG stroke-based icons + ThemeDot: Back, Toc, Typography, Play, Pause, Expand, Collapse [v1.7.0] |
 | `SettingsPanel` | `SettingsPanel.tsx` | Bottom sheet settings |
 | `SegmentedControl` | `SettingsPanel.tsx` (module-level) | Reusable segmented toggle [v1.7.0 extracted] |
 | `TocDrawer` | `TocDrawer.tsx` | TOC slide-in drawer |

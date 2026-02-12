@@ -23,9 +23,18 @@
 - 🧩 **SegmentedControl extracted** — Di chuyển ra module-level, tránh re-creation during render
 - 🛡 **Storage Quota Warning** (#60) — Hiển thị dung lượng IndexedDB trong Settings
 
+### UI/UX Redesign
+- 🎨 **Navbar Redesign** — Apple Books-inspired: 2-icon default (‹ back + ● theme dot), tap title để mở toolbar
+- 🖼 **SVG Icon Set** — 8 SVG stroke-based icons thay thế toàn bộ emoji (Icons.tsx)
+- 🎯 **Theme Color Dot** — Chấm tròn accent color thay emoji theme (consistent mọi device)
+- 📊 **Bottom Info Strip** — `Ch.X/N · %` luôn hiện ở đáy (opacity thấp)
+- 📈 **Progress Line** — Thanh accent mỏng ở đáy hiện % tổng truyện
+- 🔤 **Aa Settings** — Icon `Aa` thay `⚙️` (đúng mental model typography)
+- ⏸ **Auto-scroll Bar** — SVG icons + text labels `chậm/nhanh` thay emoji 🐢🐇
+
 ### Bug Fixes
 - 🎨 Fixed SegmentedControl being created during render (lint error)
-- 🧹 Removed unused DEFAULT_SETTINGS import
+- 🧹 Removed unused DEFAULT_SETTINGS import, themeMode prop
 - ✅ All TypeScript + ESLint clean (trừ pre-existing useEffect warnings)
 
 ## v1.6.0 (2026-02-12)
