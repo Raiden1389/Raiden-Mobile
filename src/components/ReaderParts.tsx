@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { ThemeColors } from '../contexts/ReaderTypes';
 import { DropCap } from './DropCap';
+import { IconBack, IconToc, IconTypography, IconPlay, IconPause, IconExpand, IconCollapse, ThemeDot } from './Icons';
 
 // ===================================================
 // READER SUB-COMPONENTS
@@ -164,17 +165,17 @@ export function SwipeBackIndicator({ progress, accent }: { progress: number; acc
   );
 }
 
-/** Navbar with glassmorphism + auto-scroll */
+/** Navbar — Apple Books inspired: minimal default, expand-on-tap toolbar */
 export function ReaderNavbar({
-  visible, chapterTitle, scrollPercent, theme, themeMode,
+  visible, chapterTitle, scrollPercent, theme,
   onSettings, onCycleTheme, onToc,
   autoScrollActive, onToggleAutoScroll, autoScrollSpeed, onSpeedChange,
+  currentChapterOrder, totalChapters,
 }: {
   visible: boolean;
   chapterTitle: string;
   scrollPercent: number;
   theme: ThemeColors;
-  themeMode: string;
   onSettings: () => void;
   onCycleTheme: () => void;
   onToc?: () => void;
@@ -182,76 +183,178 @@ export function ReaderNavbar({
   onToggleAutoScroll?: () => void;
   autoScrollSpeed?: number;
   onSpeedChange?: (speed: number) => void;
+  currentChapterOrder?: number;
+  totalChapters?: number;
 }) {
-  const btn: React.CSSProperties = {
-    background: 'none', border: `1px solid ${theme.border}`,
-    color: theme.text, borderRadius: '8px', padding: '4px 8px',
-    fontSize: '12px', cursor: 'pointer',
+  const [expanded, setExpanded] = useState(false);
+
+  const iconBtn: React.CSSProperties = {
+    background: 'none', border: 'none',
+    color: theme.text, padding: '6px',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: '8px', transition: 'background 0.15s ease',
   };
-  const activeBtn: React.CSSProperties = {
-    ...btn, background: `${theme.accent}25`, borderColor: theme.accent,
+  const iconBtnActive: React.CSSProperties = {
+    ...iconBtn, background: `${theme.accent}20`,
   };
+
+  const totalPct = (currentChapterOrder && totalChapters)
+    ? Math.round((currentChapterOrder / totalChapters) * 100)
+    : null;
 
   return (
     <>
+      {/* ── Top Bar ── */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0,
-        padding: '12px 16px',
-        background: `${theme.bg}dd`,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${theme.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: `${theme.bg}ee`,
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: `1px solid ${theme.border}40`,
         zIndex: 50,
         transition: 'transform 0.25s ease, opacity 0.25s ease',
         transform: visible ? 'translateY(0)' : 'translateY(-100%)',
         opacity: visible ? 1 : 0,
       }}>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: '50px' }}>
-          <a href="/" style={{ color: theme.text, textDecoration: 'none', fontSize: '13px', fontWeight: 700, opacity: 0.7 }}>←</a>
-          {onToc && <button onClick={(e) => { e.stopPropagation(); onToc(); }} style={btn}>📑</button>}
-        </div>
-        <span style={{
-          fontSize: '11px', fontWeight: 700, opacity: 0.5,
-          flex: 1, textAlign: 'center',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          padding: '0 4px',
+        {/* Row 1: Back + Title + Theme dot */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 12px',
         }}>
-          {chapterTitle || `${scrollPercent}%`}
-        </span>
-        <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
+          {/* Left: Back + TOC */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', minWidth: '60px' }}>
+            <a href="/" style={iconBtn} onClick={e => e.stopPropagation()}>
+              <IconBack size={20} />
+            </a>
+          </div>
+
+          {/* Center: Chapter title — tap to expand toolbar */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+            style={{
+              background: 'none', border: 'none', color: theme.text,
+              fontSize: '12px', fontWeight: 700, opacity: 0.6,
+              flex: 1, textAlign: 'center',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              padding: '2px 8px', cursor: 'pointer',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {chapterTitle || `${scrollPercent}%`}
+          </button>
+
+          {/* Right: Theme dot */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', minWidth: '60px', justifyContent: 'flex-end' }}>
+            <button onClick={(e) => { e.stopPropagation(); onCycleTheme(); }} style={iconBtn}
+              title="Đổi theme">
+              <ThemeDot
+                color={theme.accent}
+                size={16}
+                active
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Extended toolbar — slides down when expanded */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+          padding: expanded ? '4px 16px 8px' : '0 16px',
+          maxHeight: expanded ? '44px' : '0',
+          overflow: 'hidden',
+          transition: 'max-height 0.2s ease, padding 0.2s ease, opacity 0.15s ease',
+          opacity: expanded ? 1 : 0,
+        }}>
+          {/* TOC */}
+          {onToc && (
+            <button onClick={(e) => { e.stopPropagation(); onToc(); setExpanded(false); }}
+              style={iconBtn} title="Mục lục">
+              <IconToc size={18} />
+            </button>
+          )}
+
+          {/* Settings (Aa) */}
+          <button onClick={(e) => { e.stopPropagation(); onSettings(); setExpanded(false); }}
+            style={iconBtn} title="Cài đặt">
+            <IconTypography size={18} />
+          </button>
+
+          {/* Divider */}
+          <div style={{ width: '1px', height: '16px', background: `${theme.text}15`, margin: '0 4px' }} />
+
+          {/* Auto-scroll */}
           {onToggleAutoScroll && (
             <button onClick={(e) => { e.stopPropagation(); onToggleAutoScroll(); }}
-              style={autoScrollActive ? activeBtn : btn}>📜</button>
+              style={autoScrollActive ? iconBtnActive : iconBtn} title="Tự cuộn">
+              {autoScrollActive ? <IconPause size={14} /> : <IconPlay size={14} />}
+            </button>
           )}
+
+          {/* Fullscreen */}
           <button onClick={(e) => {
             e.stopPropagation();
             if (document.fullscreenElement) { document.exitFullscreen(); } else { document.documentElement.requestFullscreen?.(); }
-          }} style={btn}>{document.fullscreenElement ? '⬜' : '📱'}</button>
-          <button onClick={(e) => { e.stopPropagation(); onSettings(); }} style={btn}>⚙️</button>
-          <button onClick={(e) => { e.stopPropagation(); onCycleTheme(); }} style={btn}>
-            {({ dark: '🌙', forest: '🌲', slate: '🌊', sepia: '📜', light: '☀️' } as Record<string, string>)[themeMode] || '🌙'}
+          }} style={iconBtn} title="Toàn màn hình">
+            {document.fullscreenElement ? <IconCollapse size={16} /> : <IconExpand size={16} />}
           </button>
         </div>
       </header>
 
-      {/* Thin bottom bar — only when auto-scroll active */}
+      {/* ── Bottom Info Strip — always visible (subtle) ── */}
+      {!autoScrollActive && currentChapterOrder != null && totalChapters != null && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 16px',
+          fontSize: '10px', fontWeight: 600,
+          color: theme.text,
+          opacity: visible ? 0.35 : 0.15,
+          transition: 'opacity 0.3s ease',
+          zIndex: 10,
+          pointerEvents: 'none',
+          letterSpacing: '0.02em',
+        }}>
+          <span>Ch.{currentChapterOrder}/{totalChapters}</span>
+          <span>{totalPct != null ? `${totalPct}%` : ''}</span>
+        </div>
+      )}
+
+      {/* ── Bottom progress line ── */}
+      {currentChapterOrder != null && totalChapters != null && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0,
+          width: `${totalPct ?? 0}%`,
+          height: '2px',
+          background: `${theme.accent}60`,
+          zIndex: 10,
+          transition: 'width 0.5s ease-out',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {/* ── Auto-scroll speed bar ── */}
       {autoScrollActive && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, height: '40px',
           background: `${theme.bg}ee`,
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          borderTop: `1px solid ${theme.border}`,
+          borderTop: `1px solid ${theme.border}40`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: '12px', zIndex: 50, padding: '0 16px',
         }}>
-          <button onClick={onToggleAutoScroll} style={{ ...btn, padding: '2px 8px', fontSize: '11px' }}>⏸ Dừng</button>
-          <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 700 }}>🐢</span>
+          <button onClick={onToggleAutoScroll} style={{
+            ...iconBtn, padding: '2px 10px', fontSize: '11px', fontWeight: 700,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '6px', gap: '4px',
+          }}>
+            <IconPause size={10} /> Dừng
+          </button>
+          <span style={{ fontSize: '10px', opacity: 0.3, fontWeight: 700 }}>chậm</span>
           <input type="range" min={1} max={5} step={0.5} value={autoScrollSpeed}
             onChange={e => onSpeedChange?.(Number(e.target.value))}
             onClick={e => e.stopPropagation()}
             style={{ width: '100px', accentColor: theme.accent }} />
-          <span style={{ fontSize: '10px', opacity: 0.4, fontWeight: 700 }}>🐇</span>
+          <span style={{ fontSize: '10px', opacity: 0.3, fontWeight: 700 }}>nhanh</span>
         </div>
       )}
     </>

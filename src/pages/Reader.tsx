@@ -22,7 +22,6 @@ import { SettingsPanel } from '../components/SettingsPanel';
 import { EditDialog } from '../components/EditDialog';
 import { TocDrawer } from '../components/TocDrawer';
 import {
-  ProgressBar,
   ReaderNavbar,
   ChapterBlock,
   SwipeBackIndicator,
@@ -70,7 +69,7 @@ export function ReaderPage() {
 
   const {
     visibleChapters, isComplete, scrollPercent,
-    currentChapterTitle, bottomSentinelRef,
+    currentChapterTitle, currentChapterOrder, bottomSentinelRef,
     handleScroll: infiniteHandleScroll, jumpToChapter,
   } = useInfiniteScroll(allChapters, scrollContainerRef, getCurrentChapter);
 
@@ -163,15 +162,12 @@ export function ReaderPage() {
       lineHeight: settings.lineHeight,
       overflow: 'hidden',
     }}>
-      {!zenMode && <ProgressBar percent={scrollPercent} accent={theme.accent} />}
-
       {!zenMode && (
         <ReaderNavbar
           visible={navbarVisible}
           chapterTitle={currentChapterTitle}
           scrollPercent={scrollPercent}
           theme={theme}
-          themeMode={settings.theme}
           onSettings={() => setSettingsOpen(true)}
           onCycleTheme={cycleTheme}
           onToc={openToc}
@@ -179,6 +175,8 @@ export function ReaderPage() {
           onToggleAutoScroll={autoScroll.toggle}
           autoScrollSpeed={autoScroll.speed}
           onSpeedChange={autoScroll.setSpeed}
+          currentChapterOrder={currentChapterOrder}
+          totalChapters={allChapters?.length}
         />
       )}
 

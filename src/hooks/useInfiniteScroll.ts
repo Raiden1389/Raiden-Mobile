@@ -13,6 +13,7 @@ export function useInfiniteScroll(
   const [loadedRange, setLoadedRange] = useState({ start: 0, end: 5 });
   const [scrollPercent, setScrollPercent] = useState(0);
   const [currentChapterTitle, setCurrentChapterTitle] = useState('');
+  const [currentChapterOrder, setCurrentChapterOrder] = useState<number | undefined>(undefined);
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const pendingJumpRef = useRef<number | null>(null);
   const pendingRatioRef = useRef<number | null>(null);
@@ -104,11 +105,14 @@ export function useInfiniteScroll(
     const percent = totalScroll > 0 ? Math.round((el.scrollTop / totalScroll) * 100) : 0;
     setScrollPercent(Math.min(percent, 100));
 
-    // Track current chapter for navbar title
+    // Track current chapter for navbar title + order
     const pos = getCurrentChapter();
     if (pos && allChapters) {
       const ch = allChapters.find(c => c.id === pos.chapterId);
-      if (ch) setCurrentChapterTitle(ch.title_translated || ch.title);
+      if (ch) {
+        setCurrentChapterTitle(ch.title_translated || ch.title);
+        setCurrentChapterOrder(ch.order);
+      }
     }
   }, [getCurrentChapter, allChapters, scrollContainerRef]);
 
@@ -162,6 +166,7 @@ export function useInfiniteScroll(
     isComplete,
     scrollPercent,
     currentChapterTitle,
+    currentChapterOrder,
     bottomSentinelRef,
     handleScroll,
     jumpToChapter,
