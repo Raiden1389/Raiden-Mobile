@@ -139,6 +139,7 @@ export function ReaderPage() {
         style={{
           position: 'relative',
           height: '100%', overflowY: 'auto',
+          overscrollBehavior: 'none',
           WebkitOverflowScrolling: 'touch',
           padding: '20px', paddingTop: '40px', paddingBottom: '80px',
         }}

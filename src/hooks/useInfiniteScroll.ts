@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Chapter } from '../lib/db';
-import { db } from '../lib/db';
 
 /**
  * useInfiniteScroll — Manages chapter loading via IntersectionObserver
@@ -24,17 +23,23 @@ export function useInfiniteScroll(
     if (!allChapters?.length || initialRestoreDone.current) return;
     initialRestoreDone.current = true;
 
-    // Get workspaceId from first chapter
+    // Read from localStorage (where useReadingPosition saves)
     const wsId = allChapters[0]?.workspaceId;
     if (!wsId) return;
 
-    db.readingProgress.get(wsId).then(progress => {
-      if (!progress) return;
-      const idx = allChapters.findIndex(c => c.order === progress.chapterId);
+    const saved = localStorage.getItem(`raiden-lastChapter-${wsId}`);
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved);
+      const order = parsed.chapterOrder ?? parsed.chapterId;
+      if (order === undefined) return;
+
+      const idx = allChapters.findIndex(c => c.order === order);
       if (idx === -1 || idx < 5) return;
 
       setLoadedRange({ start: 0, end: Math.min(idx + 3, allChapters.length) });
-    });
+    } catch { /* ignore */ }
   }, [allChapters]);
 
   // Load next chapter when sentinel is visible

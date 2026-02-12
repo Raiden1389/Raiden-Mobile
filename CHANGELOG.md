@@ -1,5 +1,11 @@
 # Raiden Reader — Changelog
 
+## v1.4.1 (2026-02-12)
+### Bug Fixes
+- 🔧 **TOC Jump Broken** — Fix: `TocDrawer` truyền `ch.id` nhưng `jumpToChapter` nhận `ch.order`. Khi id ≠ order → jump silent fail
+- 🔧 **"Đọc tiếp" Black Screen** — Fix: `useInfiniteScroll` expand range từ IndexedDB (deprecated) thay vì localStorage. Chương > 5 không được load → đen xì
+- 🔄 **Nút Cập Nhật PWA** — Fix: bấm "Kiểm tra cập nhật" giờ force SW check server thay vì chỉ apply update sẵn. Hiện ⏳ "Đang kiểm tra..." + alert khi đã mới nhất
+
 ## v1.4.0 (2026-02-12)
 ### Features
 - 📚 **Library Sync** — Sync toàn bộ thư viện (tất cả workspaces) cùng một lúc thay vì từng truyện. Dialog hiển thị danh sách workspaces + chapter counts + progress tổng

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface LibraryHeaderProps {
@@ -19,7 +19,57 @@ interface LibraryHeaderProps {
 
 export function LibraryHeader({ isDark, accent, textColor, border, totalPending, totalChapters, workspaceCount, isPushing, onPush, onSync, version, buildId, isOnline }: LibraryHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
   const nav = useNavigate();
+
+  // Listen for SW update signal
+  useEffect(() => {
+    const handler = () => setHasUpdate(true);
+    window.addEventListener('sw-update-ready', handler);
+    return () => window.removeEventListener('sw-update-ready', handler);
+  }, []);
+
+  const [checking, setChecking] = useState(false);
+
+  const handleUpdate = async () => {
+    setMenuOpen(false);
+
+    // If update already detected, apply immediately
+    if (hasUpdate) {
+      const updateFn = (window as unknown as Record<string, unknown>).__updateSW;
+      if (typeof updateFn === 'function') {
+        (updateFn as (reloadPage?: boolean) => void)(true);
+      } else {
+        window.location.reload();
+      }
+      return;
+    }
+
+    // Force SW to check server for new version
+    setChecking(true);
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) {
+        await reg.update();
+        // Wait a moment for SW to process
+        await new Promise(r => setTimeout(r, 2000));
+        if (hasUpdate) {
+          const updateFn = (window as unknown as Record<string, unknown>).__updateSW;
+          if (typeof updateFn === 'function') {
+            (updateFn as (reloadPage?: boolean) => void)(true);
+          }
+        } else {
+          alert('✅ Đã là bản mới nhất!');
+        }
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      window.location.reload();
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <header style={{
@@ -82,12 +132,12 @@ export function LibraryHeader({ isDark, accent, textColor, border, totalPending,
             }}
           >
             ⋮
-            {totalPending > 0 && (
+            {(totalPending > 0 || hasUpdate) && (
               <span style={{
                 position: 'absolute', top: '2px', right: '4px',
                 width: '8px', height: '8px', borderRadius: '50%',
-                background: '#ef4444',
-                boxShadow: '0 0 6px rgba(239,68,68,0.6)',
+                background: hasUpdate ? '#22c55e' : '#ef4444',
+                boxShadow: hasUpdate ? '0 0 6px rgba(34,197,94,0.6)' : '0 0 6px rgba(239,68,68,0.6)',
                 animation: 'pulse-badge 2s infinite',
               }} />
             )}
@@ -166,6 +216,35 @@ export function LibraryHeader({ isDark, accent, textColor, border, totalPending,
                 >
                   <span style={{ fontSize: '16px' }}>📝</span>
                   Lịch sử sửa lỗi
+                </button>
+
+                {/* Update app button */}
+                <button
+                  onClick={handleUpdate}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '14px 16px', border: 'none', cursor: 'pointer',
+                    textAlign: 'left',
+                    borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                    background: hasUpdate
+                      ? (isDark ? 'rgba(34,197,94,0.12)' : 'rgba(34,197,94,0.08)')
+                      : 'none',
+                    color: hasUpdate
+                      ? '#22c55e'
+                      : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)'),
+                    fontSize: '14px', fontWeight: 600,
+                  }}
+                >
+                  <span style={{ fontSize: '16px' }}>{checking ? '⏳' : '🔄'}</span>
+                  {checking ? 'Đang kiểm tra...' : hasUpdate ? 'Cập nhật mới!' : 'Kiểm tra cập nhật'}
+                  {hasUpdate && (
+                    <span style={{
+                      marginLeft: 'auto',
+                      background: '#22c55e', color: '#fff',
+                      borderRadius: '10px', padding: '2px 8px',
+                      fontSize: '10px', fontWeight: 800,
+                    }}>NEW</span>
+                  )}
                 </button>
               </div>
             </>

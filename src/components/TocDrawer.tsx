@@ -88,7 +88,7 @@ export function TocDrawer({ open, onClose, chapters, currentChapterId, readChapt
             return (
               <button
                 key={ch.id}
-                onClick={() => { onSelect(ch.id); onClose(); }}
+                onClick={() => { onSelect(ch.order); onClose(); }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

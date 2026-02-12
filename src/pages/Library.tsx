@@ -11,10 +11,11 @@ import { useLibrary } from '../hooks/useLibrary';
 import type { Workspace } from '../lib/db';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useVersionCheck } from '../hooks/useVersionCheck';
 import { PageTransition } from '../components/PageTransition';
 
-const APP_VERSION = '1.4.0';
-const BUILD_ID = '12/02 10h24';
+const APP_VERSION = '1.4.1';
+const BUILD_ID = '12/02 13h02';
 
 export function LibraryPage() {
   const { settings } = useReaderSettings();
@@ -22,6 +23,7 @@ export function LibraryPage() {
   const isDark = theme.bg === '#000000' || theme.bg === '#1a1a2e';
   const [hasUpdate, setHasUpdate] = useState(false);
   const isOnline = useOnlineStatus();
+  useVersionCheck(true); // Auto-reload on Library when new build detected
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
   const {
